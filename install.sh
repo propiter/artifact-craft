@@ -83,7 +83,11 @@ else
   read -r hub_code
   if [ -n "$hub_code" ]; then
     say ""
-    "$BIN/wl-artifact" join "$hub_code" --api "$hub_api" || die "no pude crear la cuenta"
+    # El nombre con el que va a aparecer en el hub: si no, quedaria el usuario del sistema
+    printf '¿Con qué nombre querés aparecer? (ej. juan, en minúsculas): '
+    read -r hub_name
+    [ -n "$hub_name" ] || die "necesito un nombre para tu espacio"
+    "$BIN/wl-artifact" join "$hub_code" --name "$hub_name" --api "$hub_api" || die "no pude crear la cuenta"
   else
     printf 'tu token (no se muestra al escribir): '
     read -rs hub_token
