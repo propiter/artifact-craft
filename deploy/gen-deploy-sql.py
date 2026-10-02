@@ -109,7 +109,7 @@ FROM mount m JOIN compose c ON c."composeId" = m."composeId" WHERE c."appName" =
 """
 
 
-def build_deploy_yaml(image):
+def build_deploy_yaml(image, host):
     """Devuelve el compose que se despliega: con la imagen publicada y en dokploy-network.
 
     El repo NO puede declarar `dokploy-network` (es externa y solo existe en el servidor),
@@ -135,10 +135,35 @@ def build_deploy_yaml(image):
             store_nets.append("dokploy-network")
         svc["store"]["networks"] = store_nets
         doc.setdefault("networks", {})["dokploy-network"] = {"external": True}
+
+        # HUB_BASE_URL tiene que ser la URL PUBLICA: de aca salen los links que se
+        # reparten. Con el default del compose de local devolvia
+        # http://127.0.0.1:18080/... — la URL del PC, que no le sirve a nadie.
+        entorno = svc["api"].setdefault("environment", {})
+        entorno["HUB_BASE_URL"] = "https://" + host
+
+        # Los binds del repo son `./store/...` (relativo al repo). En Dokploy el compose
+        # corre desde `code/` y los archivos viven en `files/`: hay que prefijarlos con
+        # ../files/. Si no, Docker NO encuentra el origen y crea un DIRECTORIO con ese
+        # nombre: nginx no arranca y el contenedor queda en `Created`. Es la regla
+        # unica: `./X` -> `../files/X`, y deploy.sh sube el arbol igual.
+        for nombre, svc_def in doc["services"].items():
+            nuevos = []
+            for vol in svc_def.get("volumes") or []:
+                if isinstance(vol, str) and vol.startswith("./"):
+                    origen, resto = vol.split(":", 1)
+                    vol = "../files/" + origen[2:] + ":" + resto
+                nuevos.append(vol)
+            if nuevos:
+                svc_def["volumes"] = nuevos
         salida = yaml.safe_dump(doc, sort_keys=False, default_flow_style=False, width=120)
     else:
         salida = texto.replace("    build: ./api\n", "    image: %s\n" % image)
+        assert host in salida or "HUB_BASE_URL" in salida
         salida = salida.replace("    networks: [internal]\n", "    networks: [internal, dokploy-network]\n")
+        # y la URL publica (el default del repo es el de local)
+        import re as _re
+        salida = _re.sub(r"(HUB_BASE_URL: ).*", r"\1https://" + host.replace("\\", "\\\\"), salida)
         salida = salida.replace("networks:\n  internal:\n",
                                 "networks:\n  internal:\n  dokploy-network:\n    external: true\n")
         assert "dokploy-network" in salida, "no pude inyectar dokploy-network (¿cambio el compose?)"
@@ -177,16 +202,17 @@ def main():
     e = load_env()
     app, envid, host, image = e["APP"], e["ENVID"], e["HOST"], e["IMAGE"]
 
-    yaml_texto = build_deploy_yaml(image)
+    yaml_texto = build_deploy_yaml(image, host)
 
     (HERE / ("%s-02-compose.sql" % app)).write_text(
         CABECERA + SQL_COMPOSE.format(app=app, envid=envid, yaml=yaml_texto))
     (HERE / ("%s-04-domain.sql" % app)).write_text(
         CABECERA + SQL_DOMAIN.format(app=app, host=host))
 
-    archivos = ["store/default.conf"]
-    archivos += sorted(
-        "www/" + p.name for p in (ROOT / "store" / "www").glob("*") if p.is_file()
+    # filePath es relativo a files/, y files/ es espejo de store/
+    archivos = sorted(
+        "store/" + str(f.relative_to(ROOT / "store"))
+        for f in (ROOT / "store").rglob("*") if f.is_file()
     )
     cuerpo = "\n\n".join(SQL_MOUNT_ROW.format(f=f) for f in archivos)
     (HERE / ("%s-05-mount.sql" % app)).write_text(
@@ -197,6 +223,28 @@ def main():
           "\\set ON_ERROR_STOP on\n"
           "\\set APP '%s'\n\nBEGIN;\n\n%s\n\nCOMMIT;\n\n%s" % (app, cuerpo, SQL_MOUNT_PIE)
     )
+
+    # Actualizar un servicio YA existente (imagen nueva, cambio en el compose). Sin esto
+    # habria que escribir el UPDATE a mano cada vez, que es de donde salen las dos
+    # fuentes de verdad.
+    (HERE / ("%s-03-update-compose.sql" % app)).write_text(
+        CABECERA
+        + "-- Actualiza el composeFile de un servicio que YA existe.\n"
+          "-- Uso tipico: sacaste una imagen nueva y hay que apuntar el compose a ella.\n"
+          "\\set ON_ERROR_STOP on\n"
+          "\\set APP '%s'\n\n"
+          "UPDATE compose SET \"composeFile\" = $YAML$\n%s$YAML$\n"
+          "WHERE \"appName\" = :'APP';\n\n"
+          "\\echo '--- actualizado ---'\n"
+          "SELECT \"appName\", length(\"composeFile\") AS len,\n"
+          "       (\"composeFile\" like '%%%s%%') AS con_imagen\n"
+          "FROM compose WHERE \"appName\" = :'APP';\n" % (app, yaml_texto, image)
+    )
+
+    if "127.0.0.1" in yaml_texto or "localhost" in yaml_texto:
+        sys.exit("el compose desplegable quedo con una URL local: revisar HUB_BASE_URL")
+    if ("https://" + host) not in yaml_texto:
+        sys.exit("el compose desplegable no lleva la URL publica %s" % host)
 
     print("generados para %s (imagen %s):" % (app, image))
     for s in sorted(HERE.glob("%s-*.sql" % app)):

@@ -12,10 +12,12 @@ ROOT="$(dirname "$HERE")"
 FILES_DIR="$HERE/files"
 REMOTE="/etc/dokploy/compose/$APP/files"
 
+# La estructura de files/ es ESPEJO de store/: asi el compose solo necesita prefijar
+# ../files/ y no hay casos especiales por archivo.
 prep() {
-  mkdir -p "$FILES_DIR/store" "$FILES_DIR/www"
-  cp "$ROOT/store/default.conf" "$FILES_DIR/store/default.conf"
-  cp "$ROOT/store/www/"*        "$FILES_DIR/www/"
+  rm -rf "$FILES_DIR"
+  mkdir -p "$FILES_DIR"
+  cp -r "$ROOT/store" "$FILES_DIR/store"
 }
 
 build() { docker build --platform linux/amd64 -t "$IMAGE" "$ROOT/api"; }
@@ -26,17 +28,32 @@ push()  { docker push "$IMAGE"; }
 # Docker crea un directorio con ese nombre y el contenedor muere con ExitCode 127.
 files() {
   prep
-  ssh "$SERVER" "mkdir -p $REMOTE/store $REMOTE/www"
-  for f in store/default.conf www/index.html www/50x.html; do
-    ssh "$SERVER" "cat > $REMOTE/$f" < "$FILES_DIR/$f"
-    echo "subido: $f"
-  done
-  echo "--- verificacion (los hashes tienen que coincidir) ---"
-  for f in store/default.conf www/index.html www/50x.html; do
-    r="$(ssh "$SERVER" sha256sum "$REMOTE/$f" | cut -d" " -f1)"
+  echo "--- subiendo el arbol a $REMOTE ---"
+  ssh "$SERVER" "mkdir -p $REMOTE"
+  tar -C "$FILES_DIR" -cf - . | ssh "$SERVER" "tar -C $REMOTE -xf -"
+  # ssh SIN -n se come el stdin del bucle: el while daba UNA sola vuelta y "verificaba"
+  # un archivo de tres, en silencio. De ahi la guarda de conteo.
+  lista="$(cd "$FILES_DIR" && find . -type f | sed "s|^\./||" | sort)"
+  n="$(printf '%s\n' "$lista" | grep -c . || true)"
+  n_local="$(cd "$ROOT/store" && find . -type f | wc -l | tr -d ' ')"
+  [ "$n" -eq "$n_local" ] || { echo "esperaba $n_local archivo(s) y hay $n: revisar prep"; exit 1; }
+
+  echo "--- verificacion: $n archivo(s), hash contra hash ---"
+  fail=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    r="$(ssh -n "$SERVER" sha256sum "$REMOTE/$f" | cut -d" " -f1)"
     l="$(sha256sum "$FILES_DIR/$f" | cut -d" " -f1)"
-    if [ "$r" = "$l" ]; then echo "  OK    $f"; else echo "  DIFIERE $f"; exit 1; fi
-  done
+    if [ "$r" = "$l" ]; then echo "  OK      $f"; else echo "  DIFIERE $f"; fail=1; fi
+  done <<< "$lista"
+  [ "$fail" = 0 ] || exit 1
+
+  echo "--- y cada uno es un ARCHIVO, no un directorio que creo Docker ---"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    ssh -n "$SERVER" "test -f $REMOTE/$f" || { echo "  NO ES ARCHIVO: $f"; exit 1; }
+  done <<< "$lista"
+  echo "  $n archivo(s), todos regulares"
 }
 
 case "${1:-all}" in
