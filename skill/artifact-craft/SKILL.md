@@ -101,15 +101,30 @@ artifacts never need it. **Never fake a backend in tier 1**: an HTML file with a
 
 Tier 3 has exactly ONE destination. It exists; do not build another:
 
-**https://artifacts.2.24.216.175.sslip.io**
+**https://artifacts.lab.whitelabel.lat** — el hub del equipo (API con token, cuentas, cupos y galeria)
 
 | | |
 |---|---|
-| server | `daniel` (SSH host) — 2.24.216.175 |
-| Dokploy | org `Pedro` → project `Artifacts` → `production` |
-| appName | `artifacts-store-i2xhsw` |
-| publish | `~/Projets/artifacts-service/wl-artifact publish <file.html> [slug]` |
-| list / remove | `wl-artifact ls` · `wl-artifact rm <name.html>` (asks for confirmation) |
+| server | `vanguardistas` (SSH) — 177.7.42.143, Dokploy, appName `pedro-artifactshub-i94jv7` |
+| artifacts | `https://artifacts.lab.whitelabel.lat/a/<usuario>/<slug>.html` · apps: `/a/<usuario>/<slug>/` |
+| interfaz | `https://app.artifacts.lab.whitelabel.lat` — galeria, cuentas, `/admin` |
+| cuenta | `wl-artifact join <codigo-de-equipo> --name <usuario> --api <url>` (o el `install.sh` del repo `propiter/artifact-craft`) |
+| publish | `wl-artifact publish <file.html> [slug]` — el token vive en `~/.config/wl-artifact/config` (600) |
+| list / remove | `wl-artifact ls` · `wl-artifact rm <name.html>` · `wl-artifact gallery` (abre la galeria) |
+
+**La interfaz web usa un hostname SEPARADO a proposito, y no es estetica:** los artifacts son HTML
+de terceros. Si la galeria (que lleva la cookie de sesion) compartiera origen con ellos, el JS de un
+artifact podria leer la sesion de quien lo mira. Por eso el host de la app NO sirve `/a/` (da 404).
+Nunca juntes los dos hostnames.
+
+**El link de un solo uso no se puede verificar sin gastarlo.** `wl-artifact gallery` da una URL que
+vence en 10 min y sirve UNA vez: si la abris con `curl` para comprobarla, la gastas y el navegador del
+usuario recibe 410. Comprobala con otro link, o pedi uno nuevo al final. Y `ARTIFACTS_OPEN=0` desactiva
+la apertura del navegador: comparalo contra `0|false|no|off`, nunca con `[ -n "$VAR" ]` ("0" NO es vacio).
+
+**Store viejo, en retirada:** `https://artifacts.2.24.216.175.sslip.io` (`daniel`, appName
+`artifacts-store-i2xhsw`, publica por SSH con `~/Projets/artifacts-service/wl-artifact`). Sigue vivo y sin
+listado en la raiz, pero **no publiques ahi: el destino es el hub**.
 
 ```bash
 wl-artifact publish ~/artifacts/informe.html informe-auditoria
