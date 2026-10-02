@@ -28,13 +28,26 @@ command -v curl    >/dev/null 2>&1 || die "hace falta curl"
 command -v tar     >/dev/null 2>&1 || die "hace falta tar"
 command -v python3 >/dev/null 2>&1 || die "hace falta python3 (Hermes ya lo requiere)"
 
+# Opciones. Existen ademas de las variables de entorno porque `--name juan` se lee, y
+# `HUB_NAME=juan` hay que saberlo: la primera forma te dice QUE es cada cosa.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --api)           HUB_API="${2:-}";  [ -n "$HUB_API" ]  || die "--api necesita la URL del hub"; shift 2 ;;
+    --code)          HUB_CODE="${2:-}"; [ -n "$HUB_CODE" ] || die "--code necesita el codigo de equipo"; shift 2 ;;
+    --name|--nombre) HUB_NAME="${2:-}"; [ -n "$HUB_NAME" ] || die "--name necesita tu nombre"; shift 2 ;;
+    -h|--help)       say "uso: install.sh [--api URL] [--code CODIGO] [--name TU-NOMBRE]"; exit 0 ;;
+    *)               die "opcion desconocida: $1   (las que hay: --api, --code, --name)" ;;
+  esac
+done
+export HUB_API="${HUB_API:-}" HUB_CODE="${HUB_CODE:-}" HUB_NAME="${HUB_NAME:-}"
+
 # Sin terminal no hay quien conteste las preguntas. Si tampoco hay variables ni configuracion
 # previa, se frena ACA: antes se instalaba el skill y el cliente, y despues moria sin cuenta.
 if [ ! -t 0 ] && [ ! -f "$CFG" ] && [ -z "${HUB_API:-}" ]; then
   die "correr asi no funciona: no puedo preguntar sin terminal.
-  Correlo en UN comando, con las tres respuestas:
-    HUB_API=<url-del-hub> HUB_CODE=<codigo-de-equipo> HUB_NAME=<tu-nombre> bash install.sh
-  (o para actualizar solo el skill, si ya tenias cuenta: bash install.sh)"
+  Correlo en UN comando, diciendome las tres cosas:
+    bash install.sh --api https://artifacts.lab.whitelabel.lat --code EL-CODIGO --name tu-nombre
+  (o solo para actualizar el skill, si ya tenias cuenta: bash install.sh)"
 fi
 
 tmp="$(mktemp -d)"
