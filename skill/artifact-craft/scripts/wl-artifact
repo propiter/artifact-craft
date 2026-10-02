@@ -182,9 +182,14 @@ cmd_join() {
   printf '  tu galeria:  %s\n' "$galeria"
   printf '  para entrar sin escribir nada (vence en 10 min):\n    %s\n' "$login"
   export API="${api%/}" TOKEN="$token"
-  if command -v xdg-open >/dev/null 2>&1 && [ -n "${ARTIFACTS_OPEN:-1}" ]; then
-    xdg-open "$login" >/dev/null 2>&1 && printf '  (abri el navegador)\n' || true
-  fi
+  # OJO: "0" no es vacio. Comparar contra 0/false/no, no con -n, o ARTIFACTS_OPEN=0
+  # abre el navegador igual y consume el link de un solo uso.
+  case "${ARTIFACTS_OPEN:-1}" in
+    0|false|no|off) ;;
+    *) if command -v xdg-open >/dev/null 2>&1; then
+         xdg-open "$login" >/dev/null 2>&1 && printf '  (abri el navegador)\n' || true
+       fi ;;
+  esac
 }
 
 cmd_gallery() {
@@ -194,9 +199,12 @@ cmd_gallery() {
   url="$(python3 -c 'import json,sys;print(json.loads(sys.stdin.read()).get("url",""))' <<<"$out")"
   [ -n "$url" ] || die "no pude generar el link de entrada"
   printf '%s\n' "$url"
-  if command -v xdg-open >/dev/null 2>&1 && [ -n "${ARTIFACTS_OPEN:-1}" ]; then
-    xdg-open "$url" >/dev/null 2>&1 && printf 'abri la galeria en el navegador\n' || true
-  fi
+  case "${ARTIFACTS_OPEN:-1}" in
+    0|false|no|off) ;;
+    *) if command -v xdg-open >/dev/null 2>&1; then
+         xdg-open "$url" >/dev/null 2>&1 && printf 'abri la galeria en el navegador\n' || true
+       fi ;;
+  esac
 }
 
 cmd_ls() {
