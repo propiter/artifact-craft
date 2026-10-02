@@ -36,7 +36,7 @@ Answer INLINE in the chat, and render nothing, when the content is:
   sobre el reflejo de "informe -> chat": una investigacion, un informe, un analisis, un plan, un
   comparativo o un tablero se entrega como **artifact PUBLICADO, con la URL publica** — disenado y,
   cuando ayude, interactivo. Nunca un `.md`, un `.pdf` ni una ruta local: eso es justo lo que este
-  hub reemplaza. En el chat van 2 o 3 lineas (que es + el link) y el artifact es el entregable.
+  hub reemplaza. En el chat van 2 o 3 lineas (que es, y el link) y el artifact es el entregable.
   **La linea que SI se queda en el chat:** una respuesta de una linea, una aclaracion, una pregunta,
   un dato suelto. Convertir eso en artifact llena la galeria de tarjetas que nadie pidio, y
   entonces el artifact que importaba compite con ruido.
@@ -230,8 +230,8 @@ Claude's authoring rules — adopted because they are sound, not because they ar
 
 ### La barra de calidad del equipo
 
-Un artifact no esta entregado hasta que cumple esto. No es aspiracional: es lo que se revisa antes
- de mandar el link.
+Un artifact no esta entregado hasta que cumple esto. No es aspiracional: es la lista que se
+revisa antes de mandar el link.
 
 - **Datos reales, del origen.** Si el numero vive en un archivo, una API o una base, sale de ahi. Si
   es estimado, se dice que lo es. Nada de cifras de ejemplo ni placeholders.
