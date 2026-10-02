@@ -40,15 +40,30 @@ skill_md="$(find "$tmp" -maxdepth 5 -type f -name 'SKILL.md' 2>/dev/null | head 
 [ -n "$skill_md" ] || die "no encontre el SKILL.md dentro del paquete"
 skill_src="$(dirname "$skill_md")"
 
+BACKUPS="$HERMES_DIR/skill-backups"
+mkdir -p "$BACKUPS"
+
 # Instalar el skill. Si ya habia uno, se guarda una copia: nunca se borra a ciegas.
+# El respaldo va FUERA del arbol de skills a proposito: adentro quedaba un segundo SKILL.md
+# declarando el mismo `name:`, y el cargador de skills se niega a cargar un nombre ambiguo.
 mkdir -p "$(dirname "$SKILL_DST")"
 if [ -d "$SKILL_DST" ]; then
-  backup="${SKILL_DST}.bak-$(date +%Y%m%d-%H%M%S)"
+  backup="$BACKUPS/artifact-craft-$(date +%Y%m%d-%H%M%S)"
   mv "$SKILL_DST" "$backup"
   say "· habia un skill instalado: copia guardada en $backup"
 fi
 cp -r "$skill_src" "$SKILL_DST"
 say "· skill instalado en $SKILL_DST"
+
+# Otros agentes (OpenCode, Claude Code, Cursor) leen skills del MISMO formato desde su propia
+# carpeta. Quien instala no tiene por que saber cual usa: si la carpeta existe, va tambien ahi.
+for d in "$HOME/.config/opencode/skills" "$HOME/.claude/skills" "$HOME/.cursor/skills"; do
+  [ -d "$d" ] || continue
+  [ -d "$d/artifact-craft" ] && mv "$d/artifact-craft" \
+    "$BACKUPS/artifact-craft-$(printf '%s' "$d" | tr '/' '_')-$(date +%Y%m%d-%H%M%S)"
+  cp -r "$skill_src" "$d/artifact-craft"
+  say "· skill tambien en $d/artifact-craft"
+done
 
 # El cliente y sus dos archivos van juntos: el script los busca a su lado.
 mkdir -p "$BIN"
@@ -102,7 +117,8 @@ else
 fi
 
 say ""
-say "  Listo. En tu Hermes pedile un artifact y te va a dar el link."
+say "  Listo. En tu Hermes (o en OpenCode / Claude Code / Cursor, si los usas)"
+say "  pedile un artifact y te va a dar el link."
 say ""
 say "     wl-artifact publish <archivo.html> [slug]   una pagina"
 say "     wl-artifact deploy  <carpeta> [slug]        una app (html+js+css+imagenes)"
