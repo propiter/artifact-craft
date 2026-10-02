@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  artifact-craft template — copy, then DELETE everything you do not use.
+  Rules baked in: single file · no browser storage · theme tokens · dark mode ·
+  flush-left (width is measured) · no horizontal scroll at 360px · talks back via hermes.send.
+  Render with:  ::preview{file="/abs/path/to/this-file.html"}
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- two to four words, never "Name: explainer" -->
+<title>Artifact Title</title>
+<style>
+  /* Tokens the frame injects; the fallbacks make the file render standalone too. */
+  :root {
+    --fg: var(--foreground, #1a1a1a);
+    --muted: var(--muted-foreground, #6b7280);
+    --line: var(--border, #d8d8dc);
+    --surface: var(--card, #ffffff);
+    --accent: var(--accent, #eef0f4);
+    --accent-fg: #3b6fe0;
+    --radius: 10px;
+  }
+  /* A widget inherits the app theme and needs no scheme block. Delete this one if you
+     are a widget; keep and extend it if you are a full page that owns its palette. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --fg: var(--foreground, #ececf1); --muted: var(--muted-foreground, #9aa0aa); --line: var(--border, #33363d); --surface: var(--card, #1c1e22); --accent: var(--accent, #26292e); }
+  }
+  :root[data-theme="dark"] { --fg: var(--foreground, #ececf1); --muted: var(--muted-foreground, #9aa0aa); --line: var(--border, #33363d); --surface: var(--card, #1c1e22); --accent: var(--accent, #26292e); }
+
+  /* body: no margin, no background of our own — the frame is transparent. A full PAGE
+     should set an explicit background instead. */
+  body { margin: 0; color: var(--fg); font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  /* Flush left, no centring wrapper: the frame measures width from the first span. */
+  .wrap { max-width: 100%; }
+
+  h1 { font-size: 15px; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row .k { flex: 1; min-width: 0; }
+  .row .v { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  button { font: inherit; color: var(--fg); background: var(--accent); border: 1px solid var(--line);
+           border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent-fg); }
+  button:disabled { opacity: .5; cursor: default; }
+
+  /* A table that survives 360px without a horizontal scrollbar. */
+  .grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .grid th, .grid td { text-align: left; padding: 7px 10px; border-top: 1px solid var(--line); }
+  .grid th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .grid tr:first-child th { border-top: 0; }
+  .grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .ok { color: #2f8f5b; } .bad { color: #c0392b; }
+  @media (max-width: 420px) { .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Artifact Title</h1>
+  <p class="sub">One line saying what this is.</p>
+
+  <div class="card">
+    <div class="row" id="r1">
+      <span class="k">A row</span>
+      <span class="v">value</span>
+      <button data-hermes-send="Explain the row 'A row' and what I can do about it">ask</button>
+    </div>
+  </div>
+
+  <p style="margin:12px 0 0">
+    <button id="go">A button that talks back</button>
+  </p>
+
+</div>
+
+<script>
+/* The ONE voice of a widget. Present when the frame injects it; fall back to a
+   console note so the file is still honest when opened standalone. */
+function send(prompt) {
+  if (window.hermes && typeof window.hermes.send === "function") { window.hermes.send(prompt); return; }
+  console.log("[standalone] would send:", prompt);
+}
+
+/* STATE LIVES IN MEMORY. localStorage/sessionStorage/IndexedDB/cookies all THROW
+   SecurityError in the frame (opaque origin). Never add them — if state must
+   survive, that is a deployed service (tier 3), not this file. */
+var state = { count: 0 };
+
+document.getElementById("go").addEventListener("click", function () {
+  state.count++;
+  this.textContent = "Clicked " + state.count + (state.count === 1 ? " time" : " times");
+  /* One clear intent per click — capped at 500 chars, throttled to 1/second upstream. */
+  send("The user clicked the widget button; count is now " + state.count + ".");
+});
+
+/* data-hermes-send is wired by the frame itself: zero script needed for declarative clicks. */
+</script>
+</body>
+</html>
