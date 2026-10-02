@@ -187,6 +187,15 @@ Pass the slug explicitly every time, or never; do not mix.
 
 ## 4. The render contract (verified against the Hermes desktop source)
 
+**Esta seccion es de Hermes, y solo de Hermes.** En otro agente (OpenCode, Claude Code, Cursor) no
+hay panel de vista previa, ni tarjetas de artifact, ni `hermes.send`, ni tokens de tema inyectados
+por la app. Ahi **el entregable es la URL publicada** (tier 3) y nada mas: se escribe el `.html`, se
+publica, se da el link. No intentes portar los mecanismos de render: no existen del otro lado.
+
+Lo que NO cambia entre agentes: la barra de calidad (seccion 5) y la regla de publicar con URL
+publica (seccion 6). El cliente `wl-artifact` es un script de bash con python3: anda igual desde
+cualquiera.
+
 Full detail, evidence and failure modes: `references/hermes-render-contract.md`.
 The short list you must not violate:
 
