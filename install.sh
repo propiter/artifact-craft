@@ -75,15 +75,26 @@ else
   printf 'URL del hub (ej. https://artifacts.ejemplo.com): '
   read -r hub_api
   [ -n "$hub_api" ] || die "sin URL del hub no puedo configurar el cliente"
-  printf 'tu token (no se muestra al escribir): '
-  read -rs hub_token
-  printf '\n'
-  case "$hub_token" in
-    wlart_*) ;;
-    *) die "el token deberia empezar con wlart_ — pedilo a quien administra el hub" ;;
-  esac
-  "$BIN/wl-artifact" setup "$hub_token" "$hub_api" >/dev/null
-  say "· token guardado en $CFG (chmod 600)"
+
+  say ""
+  say "  ¿Tenés un CODIGO DE EQUIPO? Es lo más fácil: crea tu cuenta, guarda tu token"
+  say "  en esta máquina y te deja la galería abierta. No copiás ningún token a mano."
+  printf 'Código de equipo (pegalo, o Enter si preferís usar un token): '
+  read -r hub_code
+  if [ -n "$hub_code" ]; then
+    say ""
+    "$BIN/wl-artifact" join "$hub_code" --api "$hub_api" || die "no pude crear la cuenta"
+  else
+    printf 'tu token (no se muestra al escribir): '
+    read -rs hub_token
+    printf '\n'
+    case "$hub_token" in
+      wlart_*) ;;
+      *) die "el token debería empezar con wlart_ — pedilo a quien administra el hub" ;;
+    esac
+    "$BIN/wl-artifact" setup "$hub_token" "$hub_api" >/dev/null
+    say "· token guardado en $CFG (chmod 600)"
+  fi
 fi
 
 say ""

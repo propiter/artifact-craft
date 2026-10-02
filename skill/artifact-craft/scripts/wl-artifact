@@ -4,6 +4,8 @@
 # Configuracion (una sola vez):   wl-artifact setup wlart_tu_token
 # Archivo de config:              ~/.config/wl-artifact/config   (chmod 600)
 #
+#   wl-artifact join <codigo> [--name vos]      crea tu cuenta (Hermes lo hace por vos)
+#   wl-artifact gallery                         abre tu galeria online
 #   wl-artifact publish <archivo.html> [slug]   publica una pagina (1 archivo)
 #   wl-artifact deploy  <carpeta> [slug]        publica una APP (html+js+css+imagenes)
 #   wl-artifact ls                              lista los tuyos
@@ -149,6 +151,54 @@ print("%s  v%d  %d archivo(s), %.1f KB  %s" % (verb, d["version"], d["files"], d
 PY
 }
 
+cmd_join() {
+  local code="" name="" api="$API"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name) name="${2:-}"; shift 2 ;;
+      --api)  api="${2:-}";  shift 2 ;;
+      -*)     die "opcion desconocida: $1" ;;
+      *)      code="$1"; shift ;;
+    esac
+  done
+  [ -n "$code" ] || die "uso: wl-artifact join <codigo-de-equipo> [--name tu-usuario] [--api https://tu-hub]"
+  [ -n "$api" ] || die "falta la URL del hub: wl-artifact join <codigo> --api https://tu-hub"
+  [ -n "$name" ] || name="$(basename "${USER:-usuario}" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9-')"
+  local body out
+  body="$(python3 -c 'import json,sys;print(json.dumps({"name":sys.argv[1],"code":sys.argv[2]}))' "$name" "$code")"
+  out="$(curl -sS -X POST -H 'Content-Type: application/json' --data "$body" "${api%/}/api/v1/join" 2>&1)" \
+    || die "no pude hablar con ${api%/}/api/v1/join"
+  local token galeria login err
+  token="$(python3 -c 'import json,sys;d=json.loads(sys.stdin.read());print(d.get("token",""))' <<<"$out")"
+  err="$(python3 -c 'import json,sys;d=json.loads(sys.stdin.read());print(d.get("message","") if not d.get("ok") else "")' <<<"$out" 2>/dev/null || true)"
+  [ -n "$token" ] || die "no pude crear la cuenta: ${err:-respuesta inesperada}"
+  galeria="$(python3 -c 'import json,sys;print(json.loads(sys.stdin.read()).get("gallery_url",""))' <<<"$out")"
+  login="$(python3 -c 'import json,sys;print(json.loads(sys.stdin.read()).get("login_url",""))' <<<"$out")"
+  mkdir -p "$(dirname "$CFG")"; umask 077
+  printf 'ARTIFACTS_API=%s\nARTIFACTS_TOKEN=%s\n' "${api%/}" "$token" > "$CFG"
+  chmod 600 "$CFG"
+  printf 'cuenta lista: %s\n' "$name"
+  printf '  token guardado en %s (chmod 600) — NO hace falta que lo copies\n' "$CFG"
+  printf '  tu galeria:  %s\n' "$galeria"
+  printf '  para entrar sin escribir nada (vence en 10 min):\n    %s\n' "$login"
+  export API="${api%/}" TOKEN="$token"
+  if command -v xdg-open >/dev/null 2>&1 && [ -n "${ARTIFACTS_OPEN:-1}" ]; then
+    xdg-open "$login" >/dev/null 2>&1 && printf '  (abri el navegador)\n' || true
+  fi
+}
+
+cmd_gallery() {
+  need_token
+  local out url
+  out="$(api POST "/api/v1/login-link")"
+  url="$(python3 -c 'import json,sys;print(json.loads(sys.stdin.read()).get("url",""))' <<<"$out")"
+  [ -n "$url" ] || die "no pude generar el link de entrada"
+  printf '%s\n' "$url"
+  if command -v xdg-open >/dev/null 2>&1 && [ -n "${ARTIFACTS_OPEN:-1}" ]; then
+    xdg-open "$url" >/dev/null 2>&1 && printf 'abri la galeria en el navegador\n' || true
+  fi
+}
+
 cmd_ls() {
   need_token
   local extra="${1:-}"
@@ -210,6 +260,8 @@ case "${1:-help}" in
   setup)    shift; cmd_setup "$@" ;;
   publish|put) shift; cmd_publish "$@" ;;
   deploy|app)   shift; cmd_deploy "$@" ;;
+  join|unirse)  shift; cmd_join "$@" ;;
+  gallery|galeria) shift; cmd_gallery "$@" ;;
   ls|list)  shift; cmd_ls "$@" ;;
   rm|delete) shift; cmd_rm "$@" ;;
   whoami)   cmd_whoami ;;
