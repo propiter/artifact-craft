@@ -34,11 +34,11 @@ trap 'rm -rf "$tmp"' EXIT
 say "· bajando el skill desde github.com/${REPO}"
 curl -fsSL "$TARBALL" | tar -xz -C "$tmp" || die "no pude bajar el repo"
 
-src="$(find "$tmp" -maxdepth 2 -type d -name 'artifact-craft' | head -1)"
-[ -n "$src" ] || die "no encontre el skill dentro del paquete"
-skill_src="$src/skill/artifact-craft"
-[ -d "$skill_src" ] || skill_src="$src"
-[ -f "$skill_src/SKILL.md" ] || die "el paquete no trae SKILL.md"
+# El layout puede cambiar: busco el SKILL.md donde sea que este dentro del paquete,
+# en vez de asumir una profundidad (asumirla fue justo lo que rompio esto).
+skill_md="$(find "$tmp" -maxdepth 5 -type f -name 'SKILL.md' 2>/dev/null | head -1)"
+[ -n "$skill_md" ] || die "no encontre el SKILL.md dentro del paquete"
+skill_src="$(dirname "$skill_md")"
 
 # Instalar el skill. Si ya habia uno, se guarda una copia: nunca se borra a ciegas.
 mkdir -p "$(dirname "$SKILL_DST")"
