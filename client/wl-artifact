@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+# wl-artifact — publica artifacts en el hub.
+#
+# Configuracion (una sola vez):   wl-artifact setup wlart_tu_token
+# Archivo de config:              ~/.config/wl-artifact/config   (chmod 600)
+#
+#   wl-artifact publish <archivo.html> [slug]   publica una pagina (1 archivo)
+#   wl-artifact deploy  <carpeta> [slug]        publica una APP (html+js+css+imagenes)
+#   wl-artifact ls                              lista los tuyos
+#   wl-artifact rm <slug>                       borra (y mata los links)
+#   wl-artifact whoami                          usuario, cupo y uso
+#   wl-artifact catalog                         arma la galeria local
+#   wl-artifact events                          historial de lo tuyo
+set -euo pipefail
+
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}/wl-artifact/config"
+# shellcheck disable=SC1090
+[ -f "$CFG" ] && . "$CFG"
+# Sin hub por defecto a proposito: cada persona configura el suyo con `setup`.
+API="${ARTIFACTS_API:-}"
+TOKEN="${ARTIFACTS_TOKEN:-}"
+CATALOG_OUT="${ARTIFACTS_CATALOG:-${XDG_DATA_HOME:-$HOME/.local/share}/wl-artifact/catalog.html}"
+# readlink -f: si lo llaman por un symlink en el PATH, igual encontramos los archivos
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+# los archivos que acompanan al cliente (plantilla y generador), en orden de preferencia
+find_asset() {
+  local n="$1" d
+  for d in "$HERE" "${XDG_DATA_HOME:-$HOME/.local/share}/wl-artifact" \
+           "$HOME/.hermes/skills/creative/artifact-craft/scripts" \
+           "$HOME/.hermes/skills/creative/artifact-craft/templates"; do
+    [ -f "$d/$n" ] && { printf '%s' "$d/$n"; return 0; }
+  done
+  return 1
+}
+BUILDER="$(find_asset build-catalog.py || true)"
+TEMPLATE="$(find_asset catalog-template.html || true)"
+
+die() { printf 'wl-artifact: %s\n' "$*" >&2; exit 1; }
+
+need_config() {
+  [ -n "${API}" ] || die "no hay hub configurado.
+  Corre:  wl-artifact setup <token>   (te va a pedir la URL del hub)"
+  [ -n "${TOKEN}" ] || die "no hay token configurado.
+  Corre:  wl-artifact setup <token>   (el token te lo da quien administra el hub)"
+}
+need_token() { need_config; }
+
+# llama a la API; imprime el cuerpo y falla con el mensaje del servidor si no es 2xx
+api() {
+  local method="$1" path="$2"; shift 2
+  local tmp code
+  tmp="$(mktemp)"
+  code="$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
+            -H "Authorization: Bearer ${TOKEN}" "$@" "${API}${path}" || true)"
+  case "$code" in
+    2*) cat "$tmp" ;;
+    000) rm -f "$tmp"; die "no pude hablar con ${API} (¿red? ¿el dominio resuelve a este servidor?)" ;;
+    *) printf '%s\n' "$(python3 - "$tmp" <<'PY'
+import json,sys
+try:
+    d=json.load(open(sys.argv[1]))
+    print("error %s: %s" % (d.get("error","?"), d.get("message","")))
+except Exception:
+    print(open(sys.argv[1]).read()[:400])
+PY
+)" >&2; rm -f "$tmp"; exit 1 ;;
+  esac
+  rm -f "$tmp"
+}
+
+slugify() {
+  # minusculas, espacios y simbolos -> guion, sin acentos ni extension
+  python3 - "$1" <<'PY'
+import sys, re, unicodedata
+s = sys.argv[1]
+s = s.rsplit("/", 1)[-1]
+s = re.sub(r"\.html?$", "", s, flags=re.I)
+s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+s = re.sub(r"[^a-zA-Z0-9]+", "-", s).strip("-").lower()
+print(s[:60] or "artifact")
+PY
+}
+
+cmd_setup() {
+  local t="${1:-}" url="${2:-${ARTIFACTS_API:-}}"
+  case "$t" in wlart_*) ;; *) die "el token debe empezar con wlart_" ;; esac
+  if [ -z "$url" ]; then
+    printf 'URL del hub (ej. https://artifacts.ejemplo.com): '
+    read -r url
+  fi
+  case "$url" in
+    https://*|http://*) ;;
+    *) die "la URL del hub tiene que empezar con https:// o http://" ;;
+  esac
+  url="${url%/}"
+  mkdir -p "$(dirname "$CFG")"
+  umask 077
+  printf 'ARTIFACTS_API=%s\nARTIFACTS_TOKEN=%s\n' "$url" "$t" > "$CFG"
+  chmod 600 "$CFG"
+  printf 'listo. Config en %s (chmod 600)\n' "$CFG"
+  # este proceso leyo la config ANTES de existir: hay que fijarlas para verificar
+  API="$url"; TOKEN="$t"
+  cmd_whoami
+}
+
+cmd_publish() {
+  need_token
+  local f="${1:-}" slug="${2:-}"
+  [ -n "$f" ] || die "uso: wl-artifact publish <archivo.html> [slug]"
+  [ -f "$f" ] || die "no existe el archivo: $f"
+  case "$f" in *.html|*.htm) ;; *) die "solo .html (esto publica artifacts, no adjuntos)" ;; esac
+  [ -n "$slug" ] || slug="$(slugify "$f")"
+  # El titulo NO se manda: lo lee el servidor del <title> del propio archivo.
+  # Mandarlo por header corrompia los acentos (los headers HTTP son latin-1).
+  local args=(-H 'Content-Type: text/html')
+  local out
+  out="$(api PUT "/api/v1/artifacts/${slug}" "${args[@]}" --data-binary "@${f}")"
+  python3 - "$out" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+verb = "sin cambios" if d.get("unchanged") else "publicado"
+print("%s  v%d  %s (%d bytes)" % (verb, d["version"], d["url"], d["bytes"]))
+if d.get("snapshot_url") and not d.get("unchanged"):
+    print("  version inmutable: %s" % d["snapshot_url"])
+PY
+}
+
+cmd_deploy() {
+  need_token
+  local dir="${1:-}" slug="${2:-}"
+  [ -n "$dir" ] || die "uso: wl-artifact deploy <carpeta> [slug]"
+  [ -d "$dir" ] || die "no existe la carpeta: $dir"
+  [ -f "$dir/index.html" ] || die "la carpeta necesita un index.html en la raiz"
+  [ -n "$slug" ] || slug="$(slugify "$(basename "$dir")")"
+  local tmp; tmp="$(mktemp -d)"
+  ( cd "$dir" && tar -czf "$tmp/app.tgz" \
+      --exclude='./.git' --exclude='./node_modules' --exclude='./.DS_Store' \
+      --exclude='./.versions' --exclude='*.tgz' . ) || die "no pude empaquetar la carpeta"
+  printf 'empaquetado: %s (%s)\n' "$dir" "$(du -h "$tmp/app.tgz" | cut -f1)"
+  local out
+  out="$(api PUT "/api/v1/apps/${slug}" -H 'Content-Type: application/gzip' --data-binary "@$tmp/app.tgz")"
+  rm -rf "$tmp"
+  python3 - "$out" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+verb = "sin cambios" if d.get("unchanged") else "desplegado"
+print("%s  v%d  %d archivo(s), %.1f KB  %s" % (verb, d["version"], d["files"], d["bytes"]/1024, d["url"]))
+PY
+}
+
+cmd_ls() {
+  need_token
+  local extra="${1:-}"
+  local out; out="$(api GET "/api/v1/artifacts${extra}")"
+  python3 - "$out" "$API" <<'PY'
+import json, sys, time
+d = json.loads(sys.argv[1])
+items = d.get("artifacts", [])
+if not items:
+    print("(todavia no publicaste nada)")
+for a in items:
+    when = time.strftime("%d/%m %H:%M", time.localtime(a["updated_at"]))
+    print("  %-28s %-4s v%-3d %7d B  %s" % (a["slug"][:28], a.get("kind", "page"), a["version"], a["bytes"], when))
+    if len(items) <= 15:
+        print("      %s" % a["url"])
+PY
+}
+
+cmd_rm() {
+  need_token
+  local slug="${1:-}"
+  [ -n "$slug" ] || die "uso: wl-artifact rm <slug>"
+  printf 'esto borra "%s" y MATA todos sus links (canonica + versiones). Escribi borrar: ' "$slug"
+  read -r ok
+  [ "$ok" = "borrar" ] || { echo "cancelado"; exit 1; }
+  api DELETE "/api/v1/artifacts/${slug}"
+  echo
+}
+
+cmd_whoami() { need_token; api GET "/api/v1/whoami"; echo; }
+
+cmd_events() {
+  need_token
+  local out; out="$(api GET "/api/v1/events?limit=${1:-20}")"
+  python3 - "$out" <<'PY'
+import json, sys, time
+for e in json.loads(sys.argv[1]).get("events", []):
+    print("  %s  %-9s %-24s %s" % (time.strftime("%d/%m %H:%M", time.localtime(e["ts"])),
+          e["action"], (e["artifact"] or "")[:24], e["detail"] or ""))
+PY
+}
+
+cmd_catalog() {
+  need_token
+  [ -n "$BUILDER" ] && [ -n "$TEMPLATE" ] || die "faltan build-catalog.py / catalog-template.html.
+  Estan junto a este script o en ~/.local/share/wl-artifact/. Si copiaste solo el ejecutable, copia esos dos tambien."
+  local extra="${1:-}" out
+  out="$(api GET "/api/v1/artifacts${extra}")"
+  mkdir -p "$(dirname "$CATALOG_OUT")"
+  printf '%s' "$out" | python3 "$BUILDER" "$CATALOG_OUT" "$API" "$TEMPLATE"
+  printf 'galeria: %s\n' "$CATALOG_OUT"
+}
+
+cmd_help() {
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+case "${1:-help}" in
+  setup)    shift; cmd_setup "$@" ;;
+  publish|put) shift; cmd_publish "$@" ;;
+  deploy|app)   shift; cmd_deploy "$@" ;;
+  ls|list)  shift; cmd_ls "$@" ;;
+  rm|delete) shift; cmd_rm "$@" ;;
+  whoami)   cmd_whoami ;;
+  events)   shift; cmd_events "$@" ;;
+  catalog)  shift; cmd_catalog "$@" ;;
+  help|-h|--help) cmd_help ;;
+  *) die "comando desconocido: ${1}. Probá: wl-artifact help" ;;
+esac
