@@ -1,0 +1,48 @@
+name: skill
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  skill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: El cliente y el instalador son bash valido
+        run: |
+          for f in install.sh skill/artifact-craft/scripts/wl-artifact; do
+            bash -n "$f" || { echo "bash -n falla en $f"; exit 1; }
+            echo "OK $f"
+          done
+
+      - name: El generador de la galeria es python valido
+        run: python3 -c "import ast,sys; ast.parse(open('skill/artifact-craft/scripts/build-catalog.py').read()); print('OK build-catalog.py')"
+
+      - name: El SKILL.md tiene el frontmatter que Hermes necesita
+        run: |
+          head -1 skill/artifact-craft/SKILL.md | grep -q '^---$' || { echo "falta el frontmatter"; exit 1; }
+          grep -q '^name:' skill/artifact-craft/SKILL.md || { echo "falta name:"; exit 1; }
+          grep -q '^description:' skill/artifact-craft/SKILL.md || { echo "falta description:"; exit 1; }
+          echo "frontmatter OK"
+
+      - name: El skill NO lleva el hub de nadie adentro
+        run: |
+          if grep -rInE 'wlart_[0-9a-f]{8}|ARTIFACTS_TOKEN=wlart' skill/ ; then
+            echo "hay un token en el skill"; exit 1
+          fi
+          echo "sin credenciales"
+
+      # El instalador baja el repo y copia el skill: si el layout cambia, esto lo dice.
+      - name: El instalador instala de verdad en un HOME limpio
+        run: |
+          printf 'https://hub.invalid\nwlart_%s\n' "$(python3 -c "print('a'*48)")" > /tmp/answers
+          HOME=/tmp/fh bash install.sh < /tmp/answers || true
+          test -f /tmp/fh/.hermes/skills/creative/artifact-craft/SKILL.md || { echo "no instalo el skill"; exit 1; }
+          test -x /tmp/fh/.local/bin/wl-artifact || { echo "no instalo el cliente"; exit 1; }
+          test -f /tmp/fh/.config/wl-artifact/config || { echo "no escribio la config"; exit 1; }
+          perm=$(stat -c '%a' /tmp/fh/.config/wl-artifact/config)
+          [ "$perm" = "600" ] || { echo "la config no quedo en 600 (quedo $perm)"; exit 1; }
+          echo "instalacion OK"
