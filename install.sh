@@ -28,6 +28,15 @@ command -v curl    >/dev/null 2>&1 || die "hace falta curl"
 command -v tar     >/dev/null 2>&1 || die "hace falta tar"
 command -v python3 >/dev/null 2>&1 || die "hace falta python3 (Hermes ya lo requiere)"
 
+# Sin terminal no hay quien conteste las preguntas. Si tampoco hay variables ni configuracion
+# previa, se frena ACA: antes se instalaba el skill y el cliente, y despues moria sin cuenta.
+if [ ! -t 0 ] && [ ! -f "$CFG" ] && [ -z "${HUB_API:-}" ]; then
+  die "correr asi no funciona: no puedo preguntar sin terminal.
+  Correlo en UN comando, con las tres respuestas:
+    HUB_API=<url-del-hub> HUB_CODE=<codigo-de-equipo> HUB_NAME=<tu-nombre> bash install.sh
+  (o para actualizar solo el skill, si ya tenias cuenta: bash install.sh)"
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -87,23 +96,39 @@ if [ -f "$CFG" ]; then
   say "· ya tenias configuracion en $CFG — la dejo como esta"
   say "  (para cambiarla: wl-artifact setup <token>)"
 else
-  printf 'URL del hub (ej. https://artifacts.ejemplo.com): '
-  read -r hub_api
+  # Las tres respuestas pueden venir por variables de entorno. Es la unica forma de que un AGENTE
+  # (OpenCode, Claude Code, Hermes, el que sea) complete esto en UN comando: si corre el instalador
+  # solo, no hay quien conteste las preguntas, y antes eso terminaba con el skill y el cliente
+  # instalados pero SIN cuenta -- a medias y en silencio.
+  hub_api="${HUB_API:-}"
+  if [ -z "$hub_api" ]; then
+    [ -t 0 ] || die "esto no puede preguntar sin terminal. Correlo asi, en un solo comando:
+      HUB_API=<url-del-hub> HUB_CODE=<codigo-de-equipo> HUB_NAME=<tu-nombre> bash install.sh"
+    printf 'URL del hub (ej. https://artifacts.ejemplo.com): '
+    read -r hub_api
+  fi
   [ -n "$hub_api" ] || die "sin URL del hub no puedo configurar el cliente"
 
-  say ""
-  say "  ¿Tenés un CODIGO DE EQUIPO? Es lo más fácil: crea tu cuenta, guarda tu token"
-  say "  en esta máquina y te deja la galería abierta. No copiás ningún token a mano."
-  printf 'Código de equipo (pegalo, o Enter si preferís usar un token): '
-  read -r hub_code
+  if [ -z "${HUB_CODE:-}" ] && [ -t 0 ]; then
+    say ""
+    say "  ¿Tenés un CODIGO DE EQUIPO? Es lo más fácil: crea tu cuenta, guarda tu token"
+    say "  en esta máquina y te deja la galería abierta. No copiás ningún token a mano."
+    printf 'Código de equipo (pegalo, o Enter si preferís usar un token): '
+    read -r hub_code
+  fi
+  hub_code="${HUB_CODE:-}"
   if [ -n "$hub_code" ]; then
     say ""
     # El nombre con el que va a aparecer en el hub: si no, quedaria el usuario del sistema
-    printf '¿Con qué nombre querés aparecer? (ej. juan, en minúsculas): '
-    read -r hub_name
-    [ -n "$hub_name" ] || die "necesito un nombre para tu espacio"
+    hub_name="${HUB_NAME:-}"
+    if [ -z "$hub_name" ] && [ -t 0 ]; then
+      printf '¿Con qué nombre querés aparecer? (ej. juan, en minúsculas): '
+      read -r hub_name
+    fi
+    [ -n "$hub_name" ] || die "sin nombre no puedo crear tu espacio: pasalo en HUB_NAME=<nombre>"
     "$BIN/wl-artifact" join "$hub_code" --name "$hub_name" --api "$hub_api" || die "no pude crear la cuenta"
   else
+    [ -t 0 ] || die "sin terminal necesito HUB_API y HUB_CODE (o configurar con: wl-artifact setup <token> <url>)"
     printf 'tu token (no se muestra al escribir): '
     read -rs hub_token
     printf '\n'
