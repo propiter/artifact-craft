@@ -32,11 +32,16 @@ Render one ONLY when it is at least one of:
 
 Answer INLINE in the chat, and render nothing, when the content is:
 
-- A report, analysis, list, plan, summary, verdict or explanation. Chat carries it, and it stays
-  searchable. If they ALSO want it on disk, that is a second, separate deliverable: a file via
-  `MEDIA:/abs/path` (`.md`, `.xlsx`, `.pdf`) — which is **not an artifact**.
-- Claude's own verdict with no named reader ("should we ship this?") → answer inline, then offer
-  the page in ONE line. Do not build it uninvited.
+- **En el hub de Whitelabel, un ENTREGABLE no es texto.** Convencion fija del equipo, y manda
+  sobre el reflejo de "informe -> chat": una investigacion, un informe, un analisis, un plan, un
+  comparativo o un tablero se entrega como **artifact PUBLICADO, con la URL publica** — disenado y,
+  cuando ayude, interactivo. Nunca un `.md`, un `.pdf` ni una ruta local: eso es justo lo que este
+  hub reemplaza. En el chat van 2 o 3 lineas (que es + el link) y el artifact es el entregable.
+  **La linea que SI se queda en el chat:** una respuesta de una linea, una aclaracion, una pregunta,
+  un dato suelto. Convertir eso en artifact llena la galeria de tarjetas que nadie pidio, y
+  entonces el artifact que importaba compite con ruido.
+- Un veredicto sin lector nombrado ("¿esto lo entregamos?") → contestá en el chat, y ofrecé la
+  pagina en UNA linea. No la construyas sin que te la pidan.
 - A link to something already deployed → the deployed URL in the preview pane, not an HTML file
   pretending to have a backend.
 - Anything with a secret in it. An API key, token or password NEVER goes into page source.
@@ -222,6 +227,24 @@ Claude's authoring rules — adopted because they are sound, not because they ar
 - Phone-first layout, 16px side gutter, no horizontal page scroll.
 - Always author `.html`. A Markdown document is a source, not a deliverable: when asked to turn one
   into an artifact, **build a designed page from its content** — never transcribe the Markdown.
+
+### La barra de calidad del equipo
+
+Un artifact no esta entregado hasta que cumple esto. No es aspiracional: es lo que se revisa antes
+ de mandar el link.
+
+- **Datos reales, del origen.** Si el numero vive en un archivo, una API o una base, sale de ahi. Si
+  es estimado, se dice que lo es. Nada de cifras de ejemplo ni placeholders.
+- **Disenado, no volcado.** Jerarquia, secciones, tablas y visualizaciones donde el numero suelto no
+  se entiende. Un muro de texto o markdown transcrito no es un artifact.
+- **Autocontenido.** Un solo `.html`, sin dependencias externas. Igual servido desde el hub que
+  abierto en el celular.
+- **Se lee en el telefono.** Es el caso mas comun y el que mas se rompe: probado a ~430px, sin scroll
+  horizontal, las tablas de varias columnas apiladas.
+- **Lo pendiente, visible.** Lo que quedo sin confirmar se ve en la pagina. No se esconde ni se
+  disimula: quien lo lee tiene que poder distinguir lo firme de lo que falta.
+- **Iterable.** Al corregir, MISMO slug: la URL que ya compartiste sigue valiendo y muestra la
+  version nueva (`-vN.html` guarda la anterior). Un slug nuevo huerfana todo link repartido.
 
 ## 6. After you deliver
 
