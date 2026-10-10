@@ -59,7 +59,9 @@ jobs:
           PY
           sleep 1
           rm -rf /tmp/fh && mkdir -p /tmp/fh
-          HOME=/tmp/fh bash install.sh \
+          # -u XDG_* : el runner exporta XDG_CONFIG_HOME, y ahi manda el XDG sobre $HOME. Se
+          # limpia para que todo quede contenido en /tmp/fh; el respeto del XDG se prueba aparte.
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME=/tmp/fh bash install.sh \
             --api http://127.0.0.1:18099 \
             --token "wlart_$(python3 -c "print('a'*48)")" </dev/null
           test -f /tmp/fh/.hermes/skills/creative/artifact-craft/SKILL.md || { echo "no instalo el skill"; exit 1; }
@@ -67,6 +69,13 @@ jobs:
           test -f /tmp/fh/.config/wl-artifact/config || { echo "no escribio la config"; exit 1; }
           perm=$(stat -c '%a' /tmp/fh/.config/wl-artifact/config)
           [ "$perm" = "600" ] || { echo "la config no quedo en 600 (quedo $perm)"; exit 1; }
+          # Con XDG_CONFIG_HOME puesto, el token va ahi y NO a $HOME/.config: es lo que dice el
+          # estandar, y es exactamente lo que hacia fallar la asercion vieja.
+          rm -rf /tmp/fh3 && mkdir -p /tmp/fh3/xdg
+          env -u XDG_DATA_HOME XDG_CONFIG_HOME=/tmp/fh3/xdg HOME=/tmp/fh3 bash install.sh \
+            --api http://127.0.0.1:18099 --token "wlart_$(python3 -c "print('a'*48)")" </dev/null
+          if [ ! -f /tmp/fh3/xdg/wl-artifact/config ]; then echo "no respeto XDG_CONFIG_HOME"; exit 1; fi
+          if [ -e /tmp/fh3/.config/wl-artifact/config ]; then echo "escribio en HOME pese a XDG"; exit 1; fi
           echo "instalacion OK"
 
       # Y tiene que cubrir CUALQUIER agente que la persona tenga, no una lista fija: se planta una
@@ -96,15 +105,17 @@ jobs:
           rm -rf "$H"; mkdir -p "$H"
           mkdir -p "$H/.claude" "$H/.codex" "$H/.gemini" "$H/.cursor" "$H/.config/opencode"
           mkdir -p "$H/.config/zed/skills" "$H/.config/goose" "$H/.config/alguna-app" "$H/.opencode" "$H/mi-agente-raro"
-          HOME="$H" ARTIFACT_CRAFT_SKILL_DIRS="$H/mi-agente-raro/skills" \
-            bash install.sh --api http://127.0.0.1:18100 \
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$H" \
+              ARTIFACT_CRAFT_SKILL_DIRS="$H/mi-agente-raro/skills" \
+              bash install.sh --api http://127.0.0.1:18100 \
               --token "wlart_$(python3 -c "print('a'*48)")" </dev/null
           for d in .claude .codex .gemini .cursor .config/opencode .config/zed mi-agente-raro; do
             test -f "$H/$d/skills/artifact-craft/SKILL.md" || { echo "no llego a $d"; exit 1; }
           done
           test -f "$H/.hermes/skills/creative/artifact-craft/SKILL.md" || { echo "no llego a Hermes"; exit 1; }
-          test -e "$H/.config/goose/skills" && { echo "dejo basura en goose (no tenia skills/)"; exit 1; }
-          test -e "$H/.config/alguna-app/skills" && { echo "dejo basura en una app sin skills/"; exit 1; }
+          if [ -e "$H/.config/goose/skills" ]; then echo "dejo basura en goose (no tenia skills/)"; exit 1; fi
+          if [ -e "$H/.opencode/skills" ]; then echo "dejo basura en .opencode (no tenia skills/)"; exit 1; fi
+          if [ -e "$H/.config/alguna-app/skills" ]; then echo "dejo basura en una app sin skills/"; exit 1; fi
           echo "cobertura de agentes OK"
 
       # La guarda tiene que frenar ANTES de instalar, no despues: media instalacion en silencio
@@ -112,12 +123,15 @@ jobs:
       - name: Sin terminal ni datos se frena a tiempo
         run: |
           rm -rf /tmp/fh2 && mkdir -p /tmp/fh2
-          if HOME=/tmp/fh2 bash install.sh </dev/null; then
+          if env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME=/tmp/fh2 bash install.sh </dev/null; then
             echo "deberia haber frenado"; exit 1
           fi
-          test -e /tmp/fh2/.hermes/skills/creative/artifact-craft && { echo "instalo a medias"; exit 1; }
-          if HOME=/tmp/fh2 bash install.sh --api http://127.0.0.1:18099 --token "noempieza-bien" </dev/null; then
+          if [ -e /tmp/fh2/.hermes/skills/creative/artifact-craft ]; then echo "instalo a medias"; exit 1; fi
+          if env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME=/tmp/fh2 bash install.sh \
+               --api http://127.0.0.1:18099 --token "noempieza-bien" </dev/null; then
             echo "deberia rechazar el token invalido"; exit 1
           fi
-          test -e /tmp/fh2/.hermes/skills/creative/artifact-craft && { echo "instalo a medias con token invalido"; exit 1; }
+          if [ -e /tmp/fh2/.hermes/skills/creative/artifact-craft ]; then
+            echo "instalo a medias con token invalido"; exit 1
+          fi
           echo "frena a tiempo OK"
