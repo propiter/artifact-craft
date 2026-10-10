@@ -1,0 +1,139 @@
+<!doctype html>
+<!--
+  live-app.html — a working live page: a poll with results that update for everyone.
+  Direction: Playful (references/design.md #6). Data: the runtime the hub injects
+  (references/live-data.md, "Poll"). Copy it, change the question and the options, translate the
+  copy to the reader's language, and publish: the shared part works only once published.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Team lunch vote</title>
+<meta name="description" content="Pick where we eat on Friday. Results update live for everyone with the link.">
+<style>
+:root{
+  --bg:#fff8e7; --surface:#ffffff; --text:#1b1b3a; --muted:#5e5e86; --line:#1b1b3a;
+  --accent:#ff4f79; --accent-2:#3dd6d0; --accent-3:#ffd23f;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --radius:18px; --shadow:4px 4px 0 var(--line);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14142b; --surface:#1f1f3d; --text:#fdf6e3; --muted:#b4b4d6; --line:#fdf6e3;
+    --accent:#ff6f91; --accent-2:#4fe0da; --accent-3:#ffd84d;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14142b; --surface:#1f1f3d; --text:#fdf6e3; --muted:#b4b4d6; --line:#fdf6e3;
+  --accent:#ff6f91; --accent-2:#4fe0da; --accent-3:#ffd84d;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:17px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:640px;margin:0 auto;padding:28px 16px 48px}
+.kicker{display:inline-block;font:700 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+  background:var(--accent-3);color:#1b1b3a;padding:7px 10px;border:2px solid var(--line);border-radius:999px}
+h1{font-size:clamp(32px,8vw,52px);line-height:1.02;letter-spacing:-.02em;font-weight:800;margin:16px 0 8px}
+.lede{color:var(--muted);margin:0 0 24px;max-width:48ch}
+.options{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.option{position:relative;width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;
+  min-height:60px;padding:14px 18px;border:2px solid var(--line);border-radius:var(--radius);
+  background:var(--surface);color:var(--text);box-shadow:var(--shadow);font:700 18px/1.2 var(--sans);
+  cursor:pointer;overflow:hidden;text-align:left;transition:transform .15s ease-out,box-shadow .15s ease-out}
+.option::before{content:"";position:absolute;inset:0;width:var(--pct,0%);background:var(--accent-2);opacity:.35;
+  transition:width .45s cubic-bezier(.2,.8,.2,1)}
+.option > *{position:relative}
+.option b{font:700 15px/1 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.option:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--line)}
+.option:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.option.mine{background:var(--accent);color:#fff}
+.option.mine::before{background:#fff;opacity:.22}
+.option.mine b::after{content:" ✓"}
+.option[disabled]{cursor:default}
+.foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-top:20px;color:var(--muted);font-size:14px}
+.live{display:inline-flex;align-items:center;gap:8px;font:700 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em}
+.live::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--accent-2);border:2px solid var(--line)}
+.live.off::before{background:transparent}
+.status{min-height:1.5em;margin:14px 0 0;font-weight:600}
+@media (prefers-reduced-motion: reduce){.option,.option::before{transition:none}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <span class="kicker">Friday · team lunch</span>
+  <h1>Where do we eat?</h1>
+  <p class="lede">Vote once — you can change it until Thursday night. Everyone with the link sees the results update live.</p>
+
+  <ul class="options" id="options" aria-label="Options"></ul>
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+
+  <div class="foot">
+    <span id="total">No votes yet — be the first.</span>
+    <span class="live off" id="live">Connecting</span>
+  </div>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const OPTIONS = ["Pizza", "Sushi", "Tacos", "Something green"];
+  const POLL = "lunch";
+
+  const A = window.ARTIFACT;                 // injected by the hub at publish
+  const live = !!(A && A.live);
+  const $ = id => document.getElementById(id);
+
+  function el(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text != null) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+
+  // Everything on screen comes from the state: watch() calls this on load, after our own
+  // vote, and whenever anyone else votes.
+  function render(s) {
+    const t = live ? A.tally(POLL, s) : { _total: 0, _mine: null };
+    $("options").replaceChildren(...OPTIONS.map(o => {
+      const n = t[o] || 0, pct = t._total ? Math.round(100 * n / t._total) : 0;
+      const li = el("li");
+      const b = el("button", null, "option" + (t._mine === o ? " mine" : ""));
+      b.type = "button";
+      b.disabled = !live;
+      b.style.setProperty("--pct", pct + "%");
+      b.setAttribute("aria-pressed", t._mine === o ? "true" : "false");
+      b.append(el("span", o), el("b", live ? n + " · " + pct + "%" : "—"));
+      b.onclick = () => vote(o);
+      li.append(b);
+      return li;
+    }));
+    $("total").textContent = !live ? "Results appear once this page is published."
+      : t._total ? t._total + (t._total === 1 ? " person voted" : " people voted")
+      : "No votes yet — be the first.";
+  }
+
+  async function vote(option) {
+    $("status").textContent = "";
+    try {
+      await A.vote(POLL, option);            // no render here: watch repaints
+      $("status").textContent = "Got it — you voted " + option + ".";
+    } catch (e) {
+      $("status").textContent = "Could not save your vote (" + (e.code || e.message) + "). Try again.";
+    }
+  }
+
+  render({});
+  if (live) {
+    A.watch(s => {
+      render(s);
+      const l = $("live"); l.classList.remove("off"); l.textContent = "Live";
+    });
+  } else {
+    $("live").textContent = "Preview";
+  }
+})();
+</script>
+</body>
+</html>
