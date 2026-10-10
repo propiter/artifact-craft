@@ -118,6 +118,65 @@ jobs:
           if [ -e "$H/.config/alguna-app/skills" ]; then echo "dejo basura en una app sin skills/"; exit 1; fi
           echo "cobertura de agentes OK"
 
+      # Punta a punta contra el hub DE VERDAD: se lo clona y se lo levanta local. Un test que
+      # solo pasa en local puede estar midiendo el entorno; este arranca el servicio real,
+      # publica con el cliente real y comprueba lo que el otro extremo ve.
+      - name: Punta a punta contra el hub real
+        run: |
+          git clone --depth 1 https://github.com/propiter/artifacts-hub /tmp/hub
+          D=/tmp/e2e; rm -rf $D; mkdir -p $D
+          PORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+          HUB_DATA=$D HUB_DB=$D/hub.sqlite3 HUB_BASE_URL="http://127.0.0.1:$PORT" HUB_PORT=$PORT \
+            python3 /tmp/hub/api/app.py >$D/hub.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
+          grep -q "escuchando en :$PORT" $D/hub.log || { echo "el hub no arranco"; cat $D/hub.log; exit 1; }
+          TOK=$(python3 - "$D" <<'PY'
+          import os, sys
+          sys.path.insert(0, "/tmp/hub/api")
+          import admin
+          cfg = {"data_dir": sys.argv[1], "db_path": os.path.join(sys.argv[1], "hub.sqlite3")}
+          admin.add_user(cfg, "tester")
+          print(admin.new_token(cfg, "tester", "ci")[0])
+          PY
+          )
+          export XDG_CONFIG_HOME=$D/cfg XDG_DATA_HOME=$D/local
+          mkdir -p "$XDG_CONFIG_HOME/wl-artifact"
+          printf 'ARTIFACTS_API=http://127.0.0.1:%s\nARTIFACTS_TOKEN=%s\n' "$PORT" "$TOK" > "$XDG_CONFIG_HOME/wl-artifact/config"
+          chmod 600 "$XDG_CONFIG_HOME/wl-artifact/config"
+          cat > $D/pagina.html <<'HTML'
+          <!doctype html><html><head><meta charset="utf-8"><title>Punta a punta</title>
+          <meta name="description" content="Una prueba de verdad"></head><body><h1>hola</h1></body></html>
+          HTML
+          bash skill/artifact-craft/scripts/wl-artifact publish $D/pagina.html e2e
+          S=$D/a/tester/e2e.html
+          grep -q 'og:image' "$S" || { echo "la pagina publicada no lleva og:image"; exit 1; }
+          grep -q 'og:description" content="Una prueba de verdad"' "$S" || { echo "falta la descripcion del autor"; exit 1; }
+          grep -q 'window.ARTIFACT=' "$S" || { echo "falta el runtime"; exit 1; }
+          KEY=$(grep -o '"key":"[^"]*"' "$S" | cut -d'"' -f4)
+          [ -n "$KEY" ] || { echo "la pagina no lleva clave"; exit 1; }
+          python3 - "$D/a/tester/e2e.preview.png" <<'PY'
+          import struct, sys
+          d = open(sys.argv[1], "rb").read(33)
+          w, h = struct.unpack(">II", d[16:24])
+          assert (w, h) == (1200, 630), "la vista previa mide %sx%s" % (w, h)
+          print("vista previa %dx%d" % (w, h))
+          PY
+          # la clave que muestra el cliente es la que viaja en la pagina
+          test "$(bash skill/artifact-craft/scripts/wl-artifact key e2e | sed -n 's/^clave del artifact: //p')" = "$KEY" \
+            || { echo "la clave del CLI no coincide con la de la pagina"; exit 1; }
+          # la pagina escribe, el agente lee
+          curl -sS -X PUT -H "X-Artifact-Key: $KEY" -H 'Content-Type: application/json' \
+               --data '{"quien":"el-cliente"}' "http://127.0.0.1:$PORT/api/v1/state/tester/e2e" >/dev/null
+          bash skill/artifact-craft/scripts/wl-artifact state e2e | grep -q 'el-cliente' \
+            || { echo "el agente no ve el estado de la pagina"; exit 1; }
+          # y el estado no se sirve por HTTP
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/a/tester/.state/e2e.json")" = "404" \
+            || { echo "el estado es alcanzable por HTTP"; exit 1; }
+          # republicar lo mismo sigue siendo un no-op
+          bash skill/artifact-craft/scripts/wl-artifact publish $D/pagina.html e2e --no-thumb | grep -q 'sin cambios' \
+            || { echo "republicar lo mismo versiono de nuevo"; exit 1; }
+          echo "punta a punta OK"
+
       # La guarda tiene que frenar ANTES de instalar, no despues: media instalacion en silencio
       # fue el bug original. Y un token con formato invalido tambien se rechaza sin dejar nada.
       - name: Sin terminal ni datos se frena a tiempo
