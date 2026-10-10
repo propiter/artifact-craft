@@ -1,59 +1,59 @@
 ---
 name: artifact-craft
-description: "Use when about to deliver anything visual, interactive or page-shaped in Hermes. Decides render-vs-file-vs-deploy and holds the verified page contract."
-version: 1.0.0
+description: "Use when delivering a page, dashboard, report, chart, mockup, widget or app in Hermes, or when a result has to reach someone else as a link. Decides render-vs-file-vs-publish and holds the verified render contract."
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
-    tags: [artifact, widget, preview, dashboard, html, desktop, delivery, page-contract, claude]
+    tags: [artifact, widget, preview, dashboard, html, publish, delivery, page-contract, claude]
     related_skills: [claude-design, popular-web-designs, design-md, app-craft, hermes-agent]
 ---
 
 # Artifact Craft
 
-How to make an artifact in Hermes behave like a Claude artifact, and when NOT to make one.
+Make an artifact behave like a Claude artifact — and know when NOT to make one.
 
-**Load this BEFORE writing any `::preview` target, dashboard, chart, diagram, mockup or "page"
-for the user.** `claude-design` owns design TASTE; this skill owns the delivery decision and the
-render contract. Load both when the artifact deserves real design effort.
+**Load this BEFORE writing any `::preview` target, dashboard, chart, diagram, mockup or "page",
+and before handing over any deliverable that is meant to be looked at rather than read.** You do not
+need to be asked for "an artifact": if the shape of the answer is a page, this is the skill that
+governs it. `claude-design` owns design TASTE; this skill owns the delivery decision and the render
+contract. Load both when the artifact deserves real design effort.
 
-## 1. The Gate — decide before you build
+## 1. The gate — decide before you build
 
 An artifact is a **product the user will operate**, never a way to hand over a file.
 
-Render one ONLY when it is at least one of:
+Render one when it is at least one of:
 
 - **Interactive** — the user will click, type, drag, toggle, sort, filter.
 - **Visual** — a chart, dashboard, diagram, layout, mockup, game, deck: the shape IS the answer.
 - **A page they will USE rather than only read** — collecting input, tracking changes, live data.
+- **A deliverable for someone else** — an investigation, a report, an analysis, a plan, a
+  comparison or a board. Designed, and where it helps, interactive. The deliverable is the
+  **published artifact with its public URL**; the chat carries two or three lines (what it is, and
+  the link).
 - **Explicitly asked for** — "an artifact", "a dashboard", "an HTML page", "a landing".
 
 Answer INLINE in the chat, and render nothing, when the content is:
 
-- **En el hub de Whitelabel, un ENTREGABLE no es texto.** Convencion fija del equipo, y manda
-  sobre el reflejo de "informe -> chat": una investigacion, un informe, un analisis, un plan, un
-  comparativo o un tablero se entrega como **artifact PUBLICADO, con la URL publica** — disenado y,
-  cuando ayude, interactivo. Nunca un `.md`, un `.pdf` ni una ruta local: eso es justo lo que este
-  hub reemplaza. En el chat van 2 o 3 lineas (que es, y el link) y el artifact es el entregable.
-  **La linea que SI se queda en el chat:** una respuesta de una linea, una aclaracion, una pregunta,
-  un dato suelto. Convertir eso en artifact llena la galeria de tarjetas que nadie pidio, y
-  entonces el artifact que importaba compite con ruido.
-- Un veredicto sin lector nombrado ("¿esto lo entregamos?") → contestá en el chat, y ofrecé la
-  pagina en UNA linea. No la construyas sin que te la pidan.
-- A link to something already deployed → the deployed URL in the preview pane, not an HTML file
-  pretending to have a backend.
-- Anything with a secret in it. An API key, token or password NEVER goes into page source.
+- a one-line answer, a clarification, a question, a stray fact;
+- a verdict with **no named reader** ("should we ship this?") → answer in the chat and offer the
+  page in ONE line; do not build it uninvited;
+- a link to something already deployed → the deployed URL in the preview pane, not an HTML file
+  pretending to have a backend;
+- anything with a secret in it. An API key, token or password NEVER goes into page source.
 
-**The failure this skill exists to kill:** creating `.md` / `.txt` / link "artifacts" as a
-transport mechanism. A `.md` is a file, not an artifact. If the answer is text, the answer is
-text. Volume is not value — one artifact per topic, not one per reply.
+Turning those into artifacts fills the gallery with cards nobody asked for — and then the artifact
+that mattered competes with noise. One artifact per topic, not one per reply.
+
+**The failure this skill exists to kill:** creating `.md` / `.txt` / link "artifacts" as a transport
+mechanism. A `.md` is a file, not an artifact. If the answer is text, the answer is text.
 
 **Never render** a page that impersonates a real person or organisation, fabricated records,
 receipts or reviews passed off as genuine, or a form that collects credentials or payment details
-under false pretences. Those are files (or nothing) and the user decides about sharing. Claude's
-own rule, and it is a good one.
+under false pretences. Those are files (or nothing) and the user decides about sharing.
 
 ## 2. The desktop auto-promotes fences — do not fight it, aim it
 
@@ -95,116 +95,130 @@ by removing the fence from the transcript.
 |---|---|---|---|
 | **1 · Widget** | Interactive/visual, data you already have | single-file HTML + `::preview{file="..."}` | NO |
 | **2 · File** | Report, spreadsheet, PDF, downloadable | `MEDIA:/abs/path` | NO |
-| **3 · Deployed app** | State must persist, be shared, or be read back; secrets; real APIs; auth; a link others open | a deployed URL (`dokploy` skill) + the preview pane | YES |
+| **3 · Published page or app** | A link others open; state must persist, be shared or read back; real APIs; auth | publish to the artifact hub, and give back the URL | it already exists |
 
-Tier 3 is the exception, never the default. A server buys persistence, secrets, real data,
-webhooks and a shareable link — and costs latency, ops, auth surface and portability. Most
-artifacts never need it. **Never fake a backend in tier 1**: an HTML file with a hardcoded
-`fetch` to nowhere is worse than the plain answer.
+Tier 3 is the exception, never the default. A server buys persistence, secrets, real data, webhooks
+and a shareable link — and costs latency, ops, auth surface and portability. Most artifacts never
+need it. **Never fake a backend in tier 1**: an HTML file with a hardcoded `fetch` to nowhere is
+worse than the plain answer.
 
-### The store — already deployed, publish to it, do NOT redeploy
+### The store — publish to the hub you are configured for
 
-Tier 3 has exactly ONE destination. It exists; do not build another:
+For a page or an app that must be seen by someone, there is ONE destination: **your artifact hub**.
+It is not something you deploy for each artifact — it already runs. You publish to it and hand back
+the public URL.
 
-**https://artifacts.lab.whitelabel.lat** — el hub del equipo (API con token, cuentas, cupos y galeria)
+The client keeps your hub URL and your token in `~/.config/wl-artifact/config` (mode 600). Read them
+from there. **Never hardcode a hub URL or a token into a page, a repo or a chat.** To see who you
+are, your quota and your usage:
+
+```bash
+wl-artifact whoami
+```
 
 | | |
 |---|---|
-| server | `vanguardistas` (SSH) — 177.7.42.143, Dokploy, appName `pedro-artifactshub-i94jv7` |
-| artifacts | `https://artifacts.lab.whitelabel.lat/a/<usuario>/<slug>.html` · apps: `/a/<usuario>/<slug>/` |
-| interfaz | `https://app.artifacts.lab.whitelabel.lat` — galeria, cuentas, `/admin` |
-| cuenta | `wl-artifact join <codigo-de-equipo> --name <usuario> --api <url>` (o el `install.sh` del repo `propiter/artifact-craft`) |
-| publish | `wl-artifact publish <file.html> [slug]` — el token vive en `~/.config/wl-artifact/config` (600) |
-| list / remove | `wl-artifact ls` · `wl-artifact rm <name.html>` · `wl-artifact gallery` (abre la galeria) |
+| a page | `wl-artifact publish <file.html> [slug]` → `https://<hub>/a/<user>/<slug>.html` |
+| a whole app | `wl-artifact deploy <dir> [slug]` → `https://<hub>/a/<user>/<slug>/` |
+| list / remove | `wl-artifact ls` · `wl-artifact rm <slug>` (kills every link you handed out) |
+| open the gallery | `wl-artifact gallery` (prints a one-time login link) |
+| your local catalog | `wl-artifact catalog` |
 
-**El codigo de equipo ES una credencial, y mas ancha de lo que parece.** Con el codigo y la URL,
-cualquiera crea su cuenta y publica por HTTPS — sin SSH y sin que nadie le entregue un token a mano.
-Pero `join` tambien deja reclamar un nombre **ya existente**: quien tenga el codigo puede pedir un
-token para `<usuario>` y escribir en SU espacio. Tratalo como secreto de equipo y rotalo si se filtra.
+#### Getting in — the team code, or a token
 
-**La interfaz web usa un hostname SEPARADO a proposito, y no es estetica:** los artifacts son HTML
-de terceros. Si la galeria (que lleva la cookie de sesion) compartiera origen con ellos, el JS de un
-artifact podria leer la sesion de quien lo mira. Por eso el host de la app NO sirve `/a/` (da 404).
-Nunca juntes los dos hostnames.
+Two ways, both over HTTPS. **Neither needs SSH, nor anything installed on the server.**
 
-**El link de un solo uso no se puede verificar sin gastarlo.** `wl-artifact gallery` da una URL que
-vence en 10 min y sirve UNA vez: si la abris con `curl` para comprobarla, la gastas y el navegador del
-usuario recibe 410. Comprobala con otro link, o pedi uno nuevo al final. Y `ARTIFACTS_OPEN=0` desactiva
-la apertura del navegador: comparalo contra `0|false|no|off`, nunca con `[ -n "$VAR" ]` ("0" NO es vacio).
+- **Team code.** Whoever operates the hub hands you a code and the hub URL. One command creates your
+  account and stores your token:
+  ```bash
+  wl-artifact join <team-code> --name <your-name> --api <hub-url>
+  ```
+- **Token.** If you are given a token instead (`wlart_…`):
+  ```bash
+  wl-artifact setup <token> <hub-url>
+  ```
 
-**Store viejo, en retirada:** `https://artifacts.2.24.216.175.sslip.io` (`daniel`, appName
-`artifacts-store-i2xhsw`, publica por SSH con `~/Projets/artifacts-service/wl-artifact`). Sigue vivo y sin
-listado en la raiz, pero **no publiques ahi: el destino es el hub**.
+**The team code is a credential, and wider than it looks.** With the code and the URL, anyone can
+create an account and publish. But `join` reuses a user **by name**, so whoever holds the code can
+also claim a name that already exists and write in that space. Treat it as a team secret, and rotate
+it when it leaks.
 
-```bash
-wl-artifact publish ~/artifacts/informe.html informe-auditoria
-# → https://<hub>/a/<your-user>/informe-auditoria.html
-```
+#### If the client is not installed
 
-**A whole app — HTML + JS + CSS + images — is one command** when one page is not enough (a
-dashboard that pulls a chart library, a small tool with assets, anything multi-file):
+`wl-artifact` is one bash script plus `python3`. If it is missing, install it in a single command —
+which also drops this skill into every agent on the machine (Hermes, OpenCode, Claude Code, Cursor):
 
 ```bash
-wl-artifact deploy ~/proyectos/mi-app mi-app
-# → https://<hub>/a/<your-user>/mi-app/     (sirve su index.html, y los assets al lado)
+curl -fsSL https://raw.githubusercontent.com/propiter/artifact-craft/main/install.sh | bash
 ```
 
-The folder needs an `index.html` at its root. Extensions allowed inside: html, css, js, mjs, json,
-svg, png, jpg, gif, webp, avif, ico, woff/woff2/ttf/otf, txt, md, csv, wasm, map, mp3/mp4/webm/vtt,
-xml. Packages are validated member by member: a path that climbs out (`../`), an absolute path, a
-symlink or a disallowed extension is rejected outright, so a bundle cannot write outside its own
-folder. Redeploying replaces the tree atomically and the URL does not change.
+With no terminal to answer questions, pass the answers up front:
 
-The name carries a content hash, so republishing the same file keeps the SAME url — and identical
-bytes are a no-op (`sin cambios`), not a new version. The hub is **nginx + an API** (Python stdlib
-+ SQLite) sharing one volume: the API writes, nginx serves, and **publishing is an HTTPS call with
-your token** — nothing else, no SSH. It gives tokens per person, quotas, immutable `-vN` versions
-and an audit log. There is no catalog: **the link is the credential**, unguessable by default.
-Anything of a client's is client material — check with them before it gets a URL. No comments and
-no shared DB: that is a product, not a store.
+```bash
+bash install.sh --api <hub-url> --code <team-code> --name <your-name>   # or --token wlart_…
+```
 
-Deploy record, rollback and the deploy-SQL generator: `~/Projets/Whitelabel/artifacts-hub/deploy/README.md`
-(repo `propiter/artifacts-hub`). Server inventory and Dokploy mechanics: the `dokploy` skill.
-**Do not point a tier-3 URL at `daniel.whitelabel.lat`** — that host resolves to the wrong
-server (the wildcard goes to `proyectos`).
+#### What the hub does, in one paragraph
 
-**The root MUST NOT enumerate.** The store's root is a STATIC landing page
-(`templates/store-landing.html`) that explains there is no catalog: it is written once and
-NEVER regenerated from the artifact list. An index rebuilt on every publish was a real leak —
-anyone given one artifact link could strip the filename and read the whole collection — so the
-catalog lives with the publisher (`wl-artifact catalog`, local) and never enters the document
-root. A listing page that is *generated* from the files is the bug, not the listing itself.
+Publishing is an **HTTPS call with your token** — one file for a page, one folder for an app (needs
+an `index.html` at its root). The URL is stable: it carries a content hash, so republishing the same
+file keeps the SAME url, and identical bytes are a no-op (`sin cambios`), not a new version. Every
+previous version stays immutable at `-vN`. There are per-person tokens, quotas and an audit log, and
+**no catalog**: the link IS the credential, unguessable by default. There are no comments.
 
-**nginx gotcha that cost a silent no-op:** `add_header` declared at `server` level is DISCARDED
-for any request handled by a `location` that declares its own `add_header` — the child context
-replaces the parent's inherited set instead of merging. `X-Robots-Tag` at server level returned
-nothing while `location /` had its own `Cache-Control`/`X-Content-Type-Options`. Put the header
-inside the location, and prove it with `curl -sI` rather than trusting the config text: the file
-saying `noindex` is not the header arriving.
+An app folder is validated member by member: html, css, js, mjs, json, svg, png, jpg, gif, webp,
+avif, ico, woff/woff2/ttf/otf, txt, md, csv, wasm, map, mp3/mp4/webm/vtt, xml. A path that climbs
+out (`../`), an absolute path, a symlink or a disallowed extension is rejected outright, so a bundle
+cannot write outside its own folder. Redeploying replaces the tree atomically.
 
-**Your own catalog is local and pretty:** `wl-artifact catalog` regenerates a gallery with a live
+Anything belonging to a client is client material: check with them before it gets a URL.
+
+**Your own catalog is local and pretty.** `wl-artifact catalog` regenerates a gallery with a live
 cropped preview of each artifact, its REAL `<title>` (read out of the artifact, not the filename),
-size, relative date, search, sort and copy-URL — built by `build-catalog.py` from
-`templates/catalog-template.html`. It never touches the docroot: the publisher's catalog and the
-public store are two different things, and conflating them is what caused the leak.
+size, relative date, search, sort and copy-URL — built by `scripts/build-catalog.py` from
+`templates/catalog-template.html`. It is a file on your disk: it never touches anyone's public
+server, because a listing on the server is exactly the leak described below.
 
-**Publish footgun:** the slug defaults to the FILE's basename, so `publish x/foo.html` and
-`publish x/foo.html bar` produce two different URLs for the same bytes — a duplicate artifact.
-Pass the slug explicitly every time, or never; do not mix.
+#### Three footguns worth one line each
+
+- **The slug defaults to the file's basename**, so `publish x/foo.html` and `publish x/foo.html bar`
+  produce two different URLs for the same bytes — a duplicate. Pass the slug explicitly every time,
+  or never; do not mix.
+- **A one-time link cannot be checked without spending it.** `wl-artifact gallery` prints a URL that
+  expires in 10 minutes and serves ONCE: opening it with `curl` to test it burns it and the user's
+  browser gets a 410. Check with a different one, or ask for a fresh one at the end.
+- **`ARTIFACTS_OPEN=0` disables opening the browser.** Compare it against `0|false|no|off`, never
+  with `[ -n "$VAR" ]` — `"0"` is NOT empty, so the naive test opens the browser and burns the
+  one-time link.
+
+#### If you also operate the hub
+
+That is a server, not this skill — but three things cost real debugging and belong written down:
+the **document root must never enumerate** (a listing rebuilt on every publish leaked the whole
+collection: anyone given one artifact link could strip the filename and read everything), so a
+static landing page is written once and never regenerated from the artifact list — see
+`templates/store-landing.html`; an nginx `add_header` declared at `server` level is **discarded**
+for any request handled by a `location` that declares its own `add_header` (the child context
+replaces the parent's set instead of merging), which is how a `X-Robots-Tag: noindex` silently stops
+arriving — put it inside the location and prove it with `curl -sI`, because the config text saying
+`noindex` is not the header arriving; and artifacts are other people's HTML, so **any authenticated
+interface must live on a SEPARATE hostname** from the one serving them. Sharing an origin would let
+an artifact's JavaScript read the session cookie of whoever is looking at the gallery. Keep the two
+apart, and have the interface host refuse `/a/` outright.
 
 ## 4. The render contract (verified against the Hermes desktop source)
 
-**Esta seccion es de Hermes, y solo de Hermes.** En otro agente (OpenCode, Claude Code, Cursor) no
-hay panel de vista previa, ni tarjetas de artifact, ni `hermes.send`, ni tokens de tema inyectados
-por la app. Ahi **el entregable es la URL publicada** (tier 3) y nada mas: se escribe el `.html`, se
-publica, se da el link. No intentes portar los mecanismos de render: no existen del otro lado.
+**This section is Hermes-only.** In another agent (OpenCode, Claude Code, Cursor) there is no preview
+pane, no artifact cards, no `hermes.send` and no app-injected theme tokens. There the deliverable is
+the **published URL** and nothing else: write the `.html`, publish it, hand over the link. Do not try
+to port the render mechanisms — they do not exist on the other side.
 
-Lo que NO cambia entre agentes: la barra de calidad (seccion 5) y la regla de publicar con URL
-publica (seccion 6). El cliente `wl-artifact` es un script de bash con python3: anda igual desde
-cualquiera.
+What does NOT change between agents: the quality bar (section 5) and the rule of publishing with a
+public URL (section 6). The `wl-artifact` client is one bash script with `python3`: it behaves the
+same from anywhere.
 
-Full detail, evidence and failure modes: `references/hermes-render-contract.md`.
-The short list you must not violate:
+Full detail, evidence and failure modes: `references/hermes-render-contract.md`. The short list you
+must not violate:
 
 1. **Single file.** One self-contained `.html`. Relative sibling assets do NOT resolve — inline
    everything or use absolute CDN URLs.
@@ -233,8 +247,6 @@ The short list you must not violate:
 
 ## 5. The page contract (for full pages, not widgets)
 
-Claude's authoring rules — adopted because they are sound, not because they are Claude's:
-
 - `<title>`: two to four words. Never `"Name: explainer"`. Put the explanation in one sentence
   next to your link.
 - Define colours as tokens on `:root`, redefine for dark mode under
@@ -244,44 +256,44 @@ Claude's authoring rules — adopted because they are sound, not because they ar
 - Always author `.html`. A Markdown document is a source, not a deliverable: when asked to turn one
   into an artifact, **build a designed page from its content** — never transcribe the Markdown.
 
-### La barra de calidad del equipo
+### The quality bar
 
-Un artifact no esta entregado hasta que cumple esto. No es aspiracional: es la lista que se
-revisa antes de mandar el link.
+An artifact is not delivered until it passes this. It is not aspirational: it is the list you check
+before sending the link.
 
-- **Datos reales, del origen.** Si el numero vive en un archivo, una API o una base, sale de ahi. Si
-  es estimado, se dice que lo es. Nada de cifras de ejemplo ni placeholders.
-- **Disenado, no volcado.** Jerarquia, secciones, tablas y visualizaciones donde el numero suelto no
-  se entiende. Un muro de texto o markdown transcrito no es un artifact.
-- **Autocontenido.** Un solo `.html`, sin dependencias externas. Igual servido desde el hub que
-  abierto en el celular.
-- **Se lee en el telefono.** Es el caso mas comun y el que mas se rompe: probado a ~430px, sin scroll
-  horizontal, las tablas de varias columnas apiladas. Medido, no a ojo: 390 / 768 / 1366 px con
-  `scrollWidth === innerWidth` y ningun texto bajo 11 px. Las cuatro causas de siempre (falta el
-  `viewport`, SVG de ancho fijo con texto, tablas anchas, tipos en `pt`) y el script que lo mide:
-  `references/responsive.md`. Si la pagina tambien se imprime, lo de pantalla va en `@media screen`.
-- **Lo pendiente, visible.** Lo que quedo sin confirmar se ve en la pagina. No se esconde ni se
-  disimula: quien lo lee tiene que poder distinguir lo firme de lo que falta.
-- **Iterable.** Al corregir, MISMO slug: la URL que ya compartiste sigue valiendo y muestra la
-  version nueva (`-vN.html` guarda la anterior). Un slug nuevo huerfana todo link repartido.
+- **Real data, from the source.** If the number lives in a file, an API or a database, it comes from
+  there. If it is estimated, say so. No sample figures, no placeholders.
+- **Designed, not dumped.** Hierarchy, sections, tables and visualisations where a bare number does
+  not explain itself. A wall of text, or transcribed markdown, is not an artifact.
+- **Self-contained.** One `.html`, no external dependencies. Same served from the hub as opened on
+  a phone.
+- **Readable on a phone.** The most common case and the one that breaks most: tested at ~430px, no
+  horizontal scroll, multi-column tables stacked. Measured, not eyeballed: 390 / 768 / 1366 px with
+  `scrollWidth === innerWidth` and no text below 11px. The four usual causes (missing `viewport`,
+  fixed-width SVG with text, wide tables, `pt` sizes) and the script that measures it:
+  `references/responsive.md`. If the page also prints, put everything screen-only in `@media screen`.
+- **Nothing hidden.** What is still unconfirmed is visible on the page. Do not hide or disguise it:
+  the reader has to be able to tell what is firm from what is missing.
+- **Iterable.** When correcting, the SAME slug: the URL you already shared keeps working and shows
+  the new version (`-vN.html` keeps the old one). A new slug orphans every link you handed out.
 
 ## 6. After you deliver
 
 **The rule that matters most: if the artifact is meant for someone — or for the user on another
 machine — it is PUBLISHED, and what you give back is the PUBLIC URL. Never a local path.**
-`/home/you/artifacts/x.html` is not a deliverable: it works on exactly one computer and dies
-with it. If you made a page and did not publish it, you have not finished: run the publish step
-and hand over the link. The only local path you may ever mention is when the user explicitly
-asked for a file on disk.
+`/home/you/artifacts/x.html` is not a deliverable: it works on exactly one computer and dies with
+it. If you made a page and did not publish it, you have not finished: run the publish step and hand
+over the link. The only local path you may ever mention is when the user explicitly asked for a file
+on disk.
 
 Say in ONE sentence what the page is, or what changed on an update, and include the URL. Do not
 narrate the mechanics — the frame is already on screen. If the artifact replaced a plain answer,
 that is fine; if the user wanted both, the file goes via `MEDIA:`.
 
 **Editing is a loop, not a new artifact.** Keep the SAME file path and the SAME slug, change the
-file, publish again: the URL you already shared keeps working and now shows the new version
-(the old one stays at `-v<N>.html`). Never "fix" something by inventing a new slug — that orphans
-every link you gave out. Re-publishing identical content changes nothing at all.
+file, publish again: the URL you already shared keeps working and now shows the new version (the old
+one stays at `-v<N>.html`). Never "fix" something by inventing a new slug — that orphans every link
+you gave out. Re-publishing identical content changes nothing at all.
 
 ## 7. Anti-patterns
 
@@ -294,7 +306,9 @@ every link you gave out. Re-publishing identical content changes nothing at all.
 - `localStorage.setItem(...)` → throws. Guaranteed broken page.
 - `./script.js` next to the HTML → does not resolve. Broken page.
 - Hardcoded `#fff`/`#000` on a widget → looks foreign in the app's theme.
-- A "shareable link" that is a local file path → tier 3, or it does not exist.
+- A "shareable link" that is a local file path → publish it, or it does not exist.
+- A hub URL or a token pasted into a page, a repo or a chat → it lives in
+  `~/.config/wl-artifact/config`, mode 600.
 
 ## References
 
@@ -306,3 +320,5 @@ every link you gave out. Re-publishing identical content changes nothing at all.
   installed Claude Code bundle. Use it when matching Claude's behaviour precisely.
 - `templates/artifact.html` — the starting file: theme tokens, dark mode, phone-safe layout,
   measured height, `hermes.send` bridge. Copy it, then delete what you do not use.
+- `templates/store-landing.html` — the static landing for a hub's document root (see "If you also
+  operate the hub"). It is written once and never regenerated.

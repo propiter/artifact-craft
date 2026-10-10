@@ -138,6 +138,6 @@ These are the real gaps, and they are why tier 3 exists:
 | Asset store, multi-file artifacts, server-side asset copy | single file; inline or CDN |
 | `type_url` artifact types (deck, document, design system) | nothing; build from scratch |
 
-Reproducing those is a server decision (`dokploy` skill), not a rendering one. Everything the
+Reproducing those is a server decision, not a rendering one. Everything the
 *rendering* contract needs — single file, tokens, phone width, no hidden downloads, one-sentence
 hand-off — is reproducible today and is what `artifact-craft` enforces.
