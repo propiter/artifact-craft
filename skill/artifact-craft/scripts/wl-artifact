@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # wl-artifact — publica artifacts en el hub.
 #
-# Configuracion (una sola vez):   wl-artifact setup wlart_tu_token
+# Configuracion (una sola vez):   wl-artifact setup <token> [url-del-hub]
 # Archivo de config:              ~/.config/wl-artifact/config   (chmod 600)
 #
 #   wl-artifact join <codigo> [--name vos]      crea tu cuenta (Hermes lo hace por vos)
@@ -261,7 +261,10 @@ cmd_catalog() {
 }
 
 cmd_help() {
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  # Imprime el bloque de comentarios de arriba, hasta la primera linea que no lo es.
+  # Con un rango fijo (sed -n '2,12p') el help se queda mudo cada vez que se agrega un
+  # comando: ya se habia comido whoami, catalog y events.
+  awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
 }
 
 case "${1:-help}" in
