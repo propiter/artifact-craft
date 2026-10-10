@@ -177,6 +177,42 @@ jobs:
             || { echo "republicar lo mismo versiono de nuevo"; exit 1; }
           echo "punta a punta OK"
 
+      # Y contra un hub VIEJO (el commit anterior de verdad, no un doble) publicar tiene que
+      # seguir funcionando: avisa que no hay vista previa y entrega el link igual. Esto costo
+      # un bug en silencio —`|| true` no salva a una funcion que hace `exit` dentro de $( )—
+      # y el CI lo tiene que agarrar la proxima vez.
+      - name: Con un hub viejo, publicar igual y avisar
+        run: |
+          git clone https://github.com/propiter/artifacts-hub /tmp/hubold
+          git -C /tmp/hubold checkout -q 5b033cc
+          grep -q "thumb" /tmp/hubold/api/app.py && { echo "ese commit ya tiene la ruta: el test no prueba nada"; exit 1; }
+          D=/tmp/e2eold; rm -rf $D; mkdir -p $D
+          PORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+          HUB_DATA=$D HUB_DB=$D/hub.sqlite3 HUB_BASE_URL="http://127.0.0.1:$PORT" HUB_PORT=$PORT \
+            python3 /tmp/hubold/api/app.py >$D/hub.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
+          grep -q "escuchando en :$PORT" $D/hub.log || { echo "el hub viejo no arranco"; cat $D/hub.log; exit 1; }
+          TOK=$(python3 - "$D" <<'PY'
+          import os, sys
+          sys.path.insert(0, "/tmp/hubold/api")
+          import admin
+          cfg = {"data_dir": sys.argv[1], "db_path": os.path.join(sys.argv[1], "hub.sqlite3")}
+          admin.add_user(cfg, "tester")
+          print(admin.new_token(cfg, "tester", "ci")[0])
+          PY
+          )
+          export XDG_CONFIG_HOME=$D/cfg XDG_DATA_HOME=$D/local
+          mkdir -p "$XDG_CONFIG_HOME/wl-artifact"
+          printf 'ARTIFACTS_API=http://127.0.0.1:%s\nARTIFACTS_TOKEN=%s\n' "$PORT" "$TOK" > "$XDG_CONFIG_HOME/wl-artifact/config"
+          chmod 600 "$XDG_CONFIG_HOME/wl-artifact/config"
+          printf '<!doctype html><html><head><title>Viejo</title></head><body>x</body></html>' > $D/p.html
+          bash skill/artifact-craft/scripts/wl-artifact publish $D/p.html viejo > $D/out.txt 2>&1 || {
+            echo "publicar contra un hub viejo deberia andar y salio con error:"; cat $D/out.txt; exit 1; }
+          cat $D/out.txt
+          grep -q 'no acepta vista previa' $D/out.txt || { echo "no aviso que el hub es viejo"; exit 1; }
+          test -f $D/a/tester/viejo.html || { echo "la pagina no quedo publicada"; exit 1; }
+          echo "degradacion OK"
+
       # La guarda tiene que frenar ANTES de instalar, no despues: media instalacion en silencio
       # fue el bug original. Y un token con formato invalido tambien se rechaza sin dejar nada.
       - name: Sin terminal ni datos se frena a tiempo
