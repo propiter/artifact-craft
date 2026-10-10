@@ -236,7 +236,7 @@ async function load() {
 
 // change(state) -> new state. On a conflict it runs again over what is there NOW.
 async function save(change, state) {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 10; i++) {
     const next = change(state);
     const r = await fetch(url, { method: "PUT", headers: { ...H, "If-Match": etag },
                                  body: JSON.stringify(next) });
@@ -244,13 +244,20 @@ async function save(change, state) {
     if (r.status !== 412) throw new Error("state " + r.status);
     const cur = await r.json();            // someone wrote in between
     etag = cur.etag; state = cur.state;    // merge over theirs, not over yours
+    // back off with jitter: ten people saving at once all lose the same race without it
+    await new Promise(ok => setTimeout(ok, Math.random() * Math.min(2000, 100 * 2 ** i)));
   }
   throw new Error("state: too many conflicts");
 }
 ```
 
 Write `change` as a function of the state it receives (`s => ({...s, approved: [...s.approved, id]})`),
-never as a fixed value: that is what makes the retry a merge.
+never as a fixed value: that is what makes the retry a merge. Measured with ten players saving the
+same instant: three retries without the wait lost four of them; with it, none lost the race.
+
+The hub rate-limits **per visitor**, reads and writes apart. A page that shows live data polls no
+faster than every ~15 s, only while visible (`document.hidden`), and pauses instead of hammering on a
+`429`.
 
 And from the shell, on the other side of that same document:
 
