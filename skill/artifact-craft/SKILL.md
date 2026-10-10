@@ -146,7 +146,8 @@ it when it leaks.
 #### If the client is not installed
 
 `wl-artifact` is one bash script plus `python3`. If it is missing, install it in a single command —
-which also drops this skill into every agent on the machine (Hermes, OpenCode, Claude Code, Cursor):
+which also drops this skill into **every agent it finds on the machine** (Claude Code, Codex,
+Gemini, OpenCode, Cursor and Hermes, plus any other that already keeps a `skills/` folder):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/propiter/artifact-craft/main/install.sh | bash
@@ -156,6 +157,12 @@ With no terminal to answer questions, pass the answers up front:
 
 ```bash
 bash install.sh --api <hub-url> --code <team-code> --name <your-name>   # or --token wlart_…
+```
+
+An agent whose folder is not on the list takes one variable — colon-separated skill directories:
+
+```bash
+ARTIFACT_CRAFT_SKILL_DIRS="$HOME/.mi-agente/skills" bash install.sh
 ```
 
 #### What the hub does, in one paragraph

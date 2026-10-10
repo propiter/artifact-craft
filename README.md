@@ -19,8 +19,16 @@ Este repo es **sólo el skill**. El servicio que aloja los artifacts vive en
 curl -fsSL https://raw.githubusercontent.com/propiter/artifact-craft/main/install.sh | bash
 ```
 
-Baja el skill, deja el cliente en tu `PATH` y pide dos datos: **la URL del hub** y **tu token**. Los
-dos te los da quien administra el hub.
+Baja el skill, deja el cliente en tu `PATH` y pide dos datos: **la URL del hub** y **tu token** (o el
+código de equipo). Además copia el skill a **todos los agentes que encuentre en tu máquina** — Claude
+Code, Codex, Gemini, OpenCode, Cursor, Hermes y cualquier otro que ya guarde sus skills en una carpeta
+`skills/`. No hace falta decirle cuál usás.
+
+Sin terminal (un agente, un CI), las tres respuestas van en el mismo comando:
+
+```bash
+bash install.sh --api <url-del-hub> --code <codigo-de-equipo> --name <tu-nombre>   # o --token wlart_…
+```
 
 Después, en tu Hermes:
 
