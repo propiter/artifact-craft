@@ -117,6 +117,11 @@ Tier 3 has exactly ONE destination. It exists; do not build another:
 | publish | `wl-artifact publish <file.html> [slug]` — el token vive en `~/.config/wl-artifact/config` (600) |
 | list / remove | `wl-artifact ls` · `wl-artifact rm <name.html>` · `wl-artifact gallery` (abre la galeria) |
 
+**El codigo de equipo ES una credencial, y mas ancha de lo que parece.** Con el codigo y la URL,
+cualquiera crea su cuenta y publica por HTTPS — sin SSH y sin que nadie le entregue un token a mano.
+Pero `join` tambien deja reclamar un nombre **ya existente**: quien tenga el codigo puede pedir un
+token para `<usuario>` y escribir en SU espacio. Tratalo como secreto de equipo y rotalo si se filtra.
+
 **La interfaz web usa un hostname SEPARADO a proposito, y no es estetica:** los artifacts son HTML
 de terceros. Si la galeria (que lleva la cookie de sesion) compartiera origen con ellos, el JS de un
 artifact podria leer la sesion de quien lo mira. Por eso el host de la app NO sirve `/a/` (da 404).
@@ -150,16 +155,18 @@ xml. Packages are validated member by member: a path that climbs out (`../`), an
 symlink or a disallowed extension is rejected outright, so a bundle cannot write outside its own
 folder. Redeploying replaces the tree atomically and the URL does not change.
 
-The name carries a content hash, so republishing the same file keeps the SAME url. It is one
-nginx container plus one named volume: no API, no DB, no upload endpoint — publishing is an SSH
-write into the volume. **Public with an unguessable URL by default**; there is an `auth_basic`
-block in the mount for client material (read the README before putting anything of a client's
-up). No versioning, no comments, no shared DB — that is a product, not a store.
+The name carries a content hash, so republishing the same file keeps the SAME url — and identical
+bytes are a no-op (`sin cambios`), not a new version. The hub is **nginx + an API** (Python stdlib
++ SQLite) sharing one volume: the API writes, nginx serves, and **publishing is an HTTPS call with
+your token** — nothing else, no SSH. It gives tokens per person, quotas, immutable `-vN` versions
+and an audit log. There is no catalog: **the link is the credential**, unguessable by default.
+Anything of a client's is client material — check with them before it gets a URL. No comments and
+no shared DB: that is a product, not a store.
 
-Deploy record, rollback, the disk-write step everyone forgets: `~/Projets/artifacts-service/README.md`.
-Server inventory and Dokploy mechanics: the `dokploy` skill. **Do not point a tier-3 URL at
-`daniel.whitelabel.lat`** — that host resolves to the wrong server (the wildcard goes to
-`proyectos`).
+Deploy record, rollback and the deploy-SQL generator: `~/Projets/Whitelabel/artifacts-hub/deploy/README.md`
+(repo `propiter/artifacts-hub`). Server inventory and Dokploy mechanics: the `dokploy` skill.
+**Do not point a tier-3 URL at `daniel.whitelabel.lat`** — that host resolves to the wrong
+server (the wildcard goes to `proyectos`).
 
 **The root MUST NOT enumerate.** The store's root is a STATIC landing page
 (`templates/store-landing.html`) that explains there is no catalog: it is written once and
