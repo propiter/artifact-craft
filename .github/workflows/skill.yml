@@ -35,14 +35,51 @@ jobs:
           fi
           echo "sin credenciales"
 
-      # El instalador baja el repo y copia el skill: si el layout cambia, esto lo dice.
+      # El instalador baja el repo y copia el skill. Se prueba el camino SIN terminal
+      # (--api + --token), que es el que usa un agente o este mismo CI, contra un hub de
+      # mentira levantado aca: asi el test comprueba una instalacion REAL y no la nada.
       - name: El instalador instala de verdad en un HOME limpio
         run: |
-          printf 'https://hub.invalid\nwlart_%s\n' "$(python3 -c "print('a'*48)")" > /tmp/answers
-          HOME=/tmp/fh bash install.sh < /tmp/answers || true
+          python3 - <<'PY' &
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          import json
+          class H(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  body = json.dumps({"ok": True, "user": "tester", "is_admin": False,
+                                     "artifacts": 0, "max_artifacts": 200, "bytes_stored": 0,
+                                     "max_bytes_per_artifact": 2097152}).encode()
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+              def log_message(self, *a):
+                  pass
+          HTTPServer(("127.0.0.1", 18099), H).serve_forever()
+          PY
+          sleep 1
+          rm -rf /tmp/fh && mkdir -p /tmp/fh
+          HOME=/tmp/fh bash install.sh \
+            --api http://127.0.0.1:18099 \
+            --token "wlart_$(python3 -c "print('a'*48)")" </dev/null
           test -f /tmp/fh/.hermes/skills/creative/artifact-craft/SKILL.md || { echo "no instalo el skill"; exit 1; }
           test -x /tmp/fh/.local/bin/wl-artifact || { echo "no instalo el cliente"; exit 1; }
           test -f /tmp/fh/.config/wl-artifact/config || { echo "no escribio la config"; exit 1; }
           perm=$(stat -c '%a' /tmp/fh/.config/wl-artifact/config)
           [ "$perm" = "600" ] || { echo "la config no quedo en 600 (quedo $perm)"; exit 1; }
           echo "instalacion OK"
+
+      # La guarda tiene que frenar ANTES de instalar, no despues: media instalacion en silencio
+      # fue el bug original. Y un token con formato invalido tambien se rechaza sin dejar nada.
+      - name: Sin terminal ni datos se frena a tiempo
+        run: |
+          rm -rf /tmp/fh2 && mkdir -p /tmp/fh2
+          if HOME=/tmp/fh2 bash install.sh </dev/null; then
+            echo "deberia haber frenado"; exit 1
+          fi
+          test -e /tmp/fh2/.hermes/skills/creative/artifact-craft && { echo "instalo a medias"; exit 1; }
+          if HOME=/tmp/fh2 bash install.sh --api http://127.0.0.1:18099 --token "noempieza-bien" </dev/null; then
+            echo "deberia rechazar el token invalido"; exit 1
+          fi
+          test -e /tmp/fh2/.hermes/skills/creative/artifact-craft && { echo "instalo a medias con token invalido"; exit 1; }
+          echo "frena a tiempo OK"
