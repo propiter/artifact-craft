@@ -114,17 +114,25 @@ make_preview() {
 }
 
 # Sube la vista previa que corresponde a $1 (el archivo) para el slug $2.
+#
+# OJO, y esto costo un bug en silencio: NADA de `api ... || true`. `api` termina con `exit`, y un
+# `exit` dentro de una funcion llamada en $( ) mata TODO el shell: el `||` no llega a correr nunca
+# porque el subshell se fue antes. Se comprueba con un `if`, que si desactiva el modo estricto
+# para el comando de la condicion. (Con el hub viejo, este publish moria sin decir nada.)
 put_preview() {
   local src="$1" slug="$2" tmp png out url
   tmp="$(mktemp -d)"; png="$tmp/preview.png"
   if make_preview "$src" "$png"; then
-    out="$(api PUT "/api/v1/artifacts/${slug}/thumb" -H 'Content-Type: image/png' \
-              --data-binary "@$png" 2>/dev/null || true)"
-    url="$(printf '%s' "$out" | jfield thumb_url)"
-    if [ -n "$url" ]; then
-      printf 'vista previa: %s\n' "$url"
+    if out="$(api PUT "/api/v1/artifacts/${slug}/thumb" -H 'Content-Type: image/png' \
+                 --data-binary "@$png" 2>/dev/null)"; then
+      url="$(printf '%s' "$out" | jfield thumb_url)"
+      if [ -n "$url" ]; then
+        printf 'vista previa: %s\n' "$url"
+      else
+        printf 'vista previa subida (el hub no devolvio la url)\n'
+      fi
     else
-      printf 'aviso: el hub no acepto la vista previa (¿version vieja del hub?): se publica igual\n'
+      printf 'aviso: este hub no acepta vista previa (¿version vieja?): se publica igual\n'
     fi
   else
     printf 'sin navegador headless: se publica igual, sin vista previa\n'
