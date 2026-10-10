@@ -130,6 +130,13 @@ done
 for rel in $MAYBE_AGENTS; do
   [ -d "$HOME/$rel/skills" ] && install_for_agent "$HOME/$rel"
 done
+# Claude Code y Codex dejan mover su carpeta con una variable (CLAUDE_CONFIG_DIR, CODEX_HOME): si
+# esta puesta al instalar, ESA es la que el agente lee, no la de arriba.
+for root in "${CLAUDE_CONFIG_DIR:-}" "${CODEX_HOME:-}"; do
+  [ -n "$root" ] && [ -d "$root" ] || continue
+  case " $agents " in *" $(where_in_home "$root") "*) continue ;; esac   # ya quedo instalado
+  install_for_agent "$root"
+done
 
 # Un agente que no este en ninguna lista: se le pasa la carpeta de skills a mano, separadas por ':'.
 #   ARTIFACT_CRAFT_SKILL_DIRS="$HOME/.mi-agente/skills:/otra/ruta" bash install.sh

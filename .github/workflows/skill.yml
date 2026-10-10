@@ -28,6 +28,15 @@ jobs:
           grep -q '^description:' skill/artifact-craft/SKILL.md || { echo "falta description:"; exit 1; }
           echo "frontmatter OK"
 
+      - name: Todo archivo que el SKILL.md nombra existe
+        run: |
+          cd skill/artifact-craft
+          fail=0
+          for f in $(grep -oE '(references|templates|scripts)/[A-Za-z0-9._-]+' SKILL.md references/*.md | cut -d: -f2 | sort -u); do
+            [ -e "$f" ] || { echo "SKILL.md nombra $f y no existe"; fail=1; }
+          done
+          [ $fail = 0 ] && echo "todas las referencias existen"
+          exit $fail
       - name: El skill NO lleva el hub de nadie adentro
         run: |
           if grep -rInE 'wlart_[0-9a-f]{8}|ARTIFACTS_TOKEN=wlart' skill/ ; then
@@ -61,7 +70,7 @@ jobs:
           rm -rf /tmp/fh && mkdir -p /tmp/fh
           # -u XDG_* : el runner exporta XDG_CONFIG_HOME, y ahi manda el XDG sobre $HOME. Se
           # limpia para que todo quede contenido en /tmp/fh; el respeto del XDG se prueba aparte.
-          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME=/tmp/fh bash install.sh \
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u HERMES_HOME HOME=/tmp/fh bash install.sh \
             --api http://127.0.0.1:18099 \
             --token "wlart_$(python3 -c "print('a'*48)")" </dev/null
           test -f /tmp/fh/.hermes/skills/creative/artifact-craft/SKILL.md || { echo "no instalo el skill"; exit 1; }
@@ -105,11 +114,13 @@ jobs:
           rm -rf "$H"; mkdir -p "$H"
           mkdir -p "$H/.claude" "$H/.codex" "$H/.gemini" "$H/.cursor" "$H/.config/opencode"
           mkdir -p "$H/.config/zed/skills" "$H/.config/goose" "$H/.config/alguna-app" "$H/.opencode" "$H/mi-agente-raro"
-          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$H" \
+          mkdir -p "$H/.claude-trabajo" "$H/codex-en-otro-lado"
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u HERMES_HOME HOME="$H" \
               ARTIFACT_CRAFT_SKILL_DIRS="$H/mi-agente-raro/skills" \
+              CLAUDE_CONFIG_DIR="$H/.claude-trabajo" CODEX_HOME="$H/codex-en-otro-lado" \
               bash install.sh --api http://127.0.0.1:18100 \
               --token "wlart_$(python3 -c "print('a'*48)")" </dev/null
-          for d in .claude .codex .gemini .cursor .config/opencode .config/zed mi-agente-raro; do
+          for d in .claude .codex .gemini .cursor .config/opencode .config/zed mi-agente-raro .claude-trabajo codex-en-otro-lado; do
             test -f "$H/$d/skills/artifact-craft/SKILL.md" || { echo "no llego a $d"; exit 1; }
           done
           test -f "$H/.hermes/skills/creative/artifact-craft/SKILL.md" || { echo "no llego a Hermes"; exit 1; }
@@ -152,6 +163,13 @@ jobs:
           grep -q 'og:image' "$S" || { echo "la pagina publicada no lleva og:image"; exit 1; }
           grep -q 'og:description" content="Una prueba de verdad"' "$S" || { echo "falta la descripcion del autor"; exit 1; }
           grep -q 'window.ARTIFACT=' "$S" || { echo "falta el runtime"; exit 1; }
+          # las funciones que el skill le ensena al agente tienen que llegar en la pagina
+          for f in load save watch get set incr push update remove vote tally rank clean; do
+            grep -q "A.$f = " "$S" || { echo "el runtime de la pagina no trae A.$f"; exit 1; }
+          done
+          # y la plantilla viva del skill se publica y recibe el runtime como cualquier pagina
+          bash skill/artifact-craft/scripts/wl-artifact publish skill/artifact-craft/templates/live-app.html plantilla-viva
+          grep -q 'A.vote = async function' $D/a/tester/plantilla-viva.html || { echo "la plantilla publicada no trae el runtime"; exit 1; }
           KEY=$(grep -o '"key":"[^"]*"' "$S" | cut -d'"' -f4)
           [ -n "$KEY" ] || { echo "la pagina no lleva clave"; exit 1; }
           python3 - "$D/a/tester/e2e.preview.png" <<'PY'
@@ -167,7 +185,10 @@ jobs:
           # la pagina escribe, el agente lee
           curl -sS -X PUT -H "X-Artifact-Key: $KEY" -H 'Content-Type: application/json' \
                --data '{"quien":"el-cliente"}' "http://127.0.0.1:$PORT/api/v1/state/tester/e2e" >/dev/null
-          bash skill/artifact-craft/scripts/wl-artifact state e2e | grep -q 'el-cliente' \
+          # a archivo y despues grep: con `| grep -q`, grep corta la tuberia al encontrar y, con
+          # pipefail, el cliente cortado cuenta como falla aunque el dato este (fallaba a veces)
+          bash skill/artifact-craft/scripts/wl-artifact state e2e > $D/st.json
+          grep -q 'el-cliente' $D/st.json \
             || { echo "el agente no ve el estado de la pagina"; exit 1; }
           # cada lectura avisa que eso lo escribio un tercero, y da el etag
           bash skill/artifact-craft/scripts/wl-artifact state e2e 2>$D/err >/dev/null
@@ -181,7 +202,8 @@ jobs:
             echo "el agente piso lo que la pagina escribio despues"; exit 1
           fi
           grep -q 'conflict' $D/err || { echo "el rechazo no dice que es un conflicto"; cat $D/err; exit 1; }
-          bash skill/artifact-craft/scripts/wl-artifact state e2e | grep -q 'la-pagina-otra-vez' \
+          bash skill/artifact-craft/scripts/wl-artifact state e2e > $D/st.json
+          grep -q 'la-pagina-otra-vez' $D/st.json \
             || { echo "se perdio lo que escribio la pagina"; exit 1; }
           # con el etag al dia, escribe
           ETAG=$(bash skill/artifact-craft/scripts/wl-artifact state e2e 2>&1 >/dev/null | sed -n 's/^# etag //p')
@@ -191,7 +213,8 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/a/tester/.state/e2e.json")" = "404" \
             || { echo "el estado es alcanzable por HTTP"; exit 1; }
           # republicar lo mismo sigue siendo un no-op
-          bash skill/artifact-craft/scripts/wl-artifact publish $D/pagina.html e2e --no-thumb | grep -q 'sin cambios' \
+          bash skill/artifact-craft/scripts/wl-artifact publish $D/pagina.html e2e --no-thumb > $D/pub.txt
+          grep -q 'sin cambios' $D/pub.txt \
             || { echo "republicar lo mismo versiono de nuevo"; exit 1; }
           echo "punta a punta OK"
 
@@ -236,11 +259,11 @@ jobs:
       - name: Sin terminal ni datos se frena a tiempo
         run: |
           rm -rf /tmp/fh2 && mkdir -p /tmp/fh2
-          if env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME=/tmp/fh2 bash install.sh </dev/null; then
+          if env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u HERMES_HOME HOME=/tmp/fh2 bash install.sh </dev/null; then
             echo "deberia haber frenado"; exit 1
           fi
           if [ -e /tmp/fh2/.hermes/skills/creative/artifact-craft ]; then echo "instalo a medias"; exit 1; fi
-          if env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME=/tmp/fh2 bash install.sh \
+          if env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u HERMES_HOME HOME=/tmp/fh2 bash install.sh \
                --api http://127.0.0.1:18099 --token "noempieza-bien" </dev/null; then
             echo "deberia rechazar el token invalido"; exit 1
           fi
