@@ -186,6 +186,68 @@ size, relative date, search, sort and copy-URL — built by `scripts/build-catal
 `templates/catalog-template.html`. It is a file on your disk: it never touches anyone's public
 server, because a listing on the server is exactly the leak described below.
 
+#### The link looks good when you PASTE it
+
+The hub injects the social metadata into the `<head>` at publish time — you do not write it, and
+it is deterministic, so republishing the same bytes is still a no-op:
+
+- `og:title`, `og:url`, `og:type`, `og:site_name` and, when the page declares one, `og:description`
+  (built from your own `<meta name="description">`: a preview that promises something the page does
+  not say is worse than no description at all).
+- `og:image`, pointing at a **1200×630 render of the real page**. `wl-artifact publish` and
+  `deploy` generate it with a headless browser and upload it BEFORE the page, so even the first
+  publish carries the image. `--no-thumb` skips it; on a machine with no browser the publish
+  succeeds anyway, just without the picture.
+
+**Yours wins:** an `og:*` tag you declared is never overwritten, and nothing outside the `<head>`
+is touched — a page with no `<head>` is stored exactly as it came. Against a hub that is older than
+the client, publishing still works: the client warns and hands over the link without a preview.
+
+The point is that a preview is not a feature of the tool that made the page; it is what ANY chat
+app sees when someone pastes the link. Write a two-to-four-word `<title>` and a one-line
+`<meta name="description">`, and the unfurl happens by itself — in Telegram, Slack, WhatsApp, or
+whatever comes next.
+
+#### A page that can TALK BACK
+
+Every published page gets one line injected, `window.ARTIFACT`, with the hub it belongs to, its own
+owner and slug, and a **capability key that opens only that artifact's state**:
+
+```js
+// ya viaja en tu pagina: NO lo escribas vos
+window.ARTIFACT = { api: "https://<hub>", owner: "<vos>", slug: "<slug>", key: "art_…" };
+```
+
+With it, a page keeps state that survives a reload, and the agent reads the same document:
+
+```js
+const url = `${ARTIFACT.api}/api/v1/state/${ARTIFACT.owner}/${ARTIFACT.slug}`;
+await fetch(url, { method: "PUT", headers: { "X-Artifact-Key": ARTIFACT.key,
+                  "Content-Type": "application/json" }, body: JSON.stringify(estado) });
+const estado = await (await fetch(url, { headers: { "X-Artifact-Key": ARTIFACT.key } })).json();
+```
+
+And from the shell, on the other side of that same document:
+
+```bash
+wl-artifact state <slug>                   # lee lo que guardo la pagina
+wl-artifact state-set <slug> datos.json    # escribe para que la pagina lo levante
+wl-artifact key <slug>                     # la clave; --rotate, --off, --on
+```
+
+Four rules that matter:
+
+- **The key is not the account token.** It is derived from the server's secret, scoped to one
+  artifact, rate-limited and revocable — and it is the ONLY credential that ever travels inside a
+  page. A `wlart_…` token in HTML is a leak, always.
+- **Anyone holding the link can write that state.** The link IS the credential, and this is the
+  same deal. Use it for what the page needs (which sections are approved, the last calculation),
+  never for something you would not show.
+- **State lives outside the document root**, so it is not reachable by URL, and `rm` takes it away
+  with the artifact. Writing state does not create a new artifact version.
+- It is a **small JSON document** (64 KB by default). Needing more than that means the thing is a
+  deployed app, not an artifact.
+
 #### Three footguns worth one line each
 
 - **The slug defaults to the file's basename**, so `publish x/foo.html` and `publish x/foo.html bar`
