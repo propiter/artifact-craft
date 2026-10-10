@@ -62,7 +62,7 @@ fi
 if [ ! -t 0 ] && [ ! -f "$CFG" ] && [ -z "${HUB_API:-}" ] && [ -z "${HUB_TOKEN:-}" ] && [ -z "${HUB_CODE:-}" ]; then
   die "correr asi no funciona: no puedo preguntar sin terminal.
   Correlo en UN comando, diciendome las tres cosas:
-    bash install.sh --api https://artifacts.lab.whitelabel.lat --code EL-CODIGO --name tu-nombre
+    bash install.sh --api https://artifacts.tu-dominio.com --code EL-CODIGO --name tu-nombre
   (o con un token ya emitido: --api <url> --token wlart_...)
   (o solo para actualizar el skill, si ya tenias cuenta: bash install.sh)"
 fi
