@@ -1,10 +1,21 @@
 # artifact-craft
 
-**El skill que hace que Hermes entregue artifacts, no archivos sueltos.**
+**El skill que hace que tu agente entregue artifacts, no archivos sueltos** — Hermes, Claude Code,
+Codex, Gemini, OpenCode, Cursor, el que uses.
 
-En vez de un `.md` o un `.pdf` que el otro no puede abrir, Hermes construye un **artifact**: una
+En vez de un `.md` o un `.pdf` que el otro no puede abrir, el agente construye un **artifact**: una
 página HTML autocontenida — una propuesta, un tablero, un comparador, una calculadora, un informe
-visual — la **publica** y te devuelve un **link para compartir**.
+visual, un juego — la **publica** y te devuelve un **link para compartir**. Con una miniatura que se
+ve al pegarlo en cualquier chat.
+
+- **Datos compartidos y en vivo.** Cada página publicada trae funciones para guardar datos que ven
+  todos los que abren el link y que el agente lee después: votaciones, rankings, listas
+  compartidas, libros de visitas, confirmaciones de asistencia, aprobaciones de una propuesta. El
+  agente no escribe la parte delicada (dos personas guardando a la vez, reintentos, límites): la
+  trae la página.
+- **Diseñado, no generado.** El skill trae una guía de diseño con ocho direcciones completas y el
+  método para elegir según el contenido y el gusto del usuario, que el agente recuerda entre
+  sesiones.
 
 > **La regla que importa:** si el artifact es para alguien, se publica y se entrega la **URL
 > pública**. Una ruta local (`/home/vos/artifacts/x.html`) no es un entregable: funciona en una sola
@@ -83,10 +94,11 @@ cp skill/artifact-craft/templates/catalog-template.html ~/.local/bin/
 
 | Ruta | Qué es |
 |---|---|
-| `skill/artifact-craft/SKILL.md` | el skill: el criterio, el contrato de render y la regla de la URL |
+| `skill/artifact-craft/SKILL.md` | el skill: el criterio, los datos en vivo, el contrato de render y la regla de la URL |
+| `skill/artifact-craft/references/` | diseño, recetas de datos en vivo por caso de uso, responsive y los contratos de render |
 | `skill/artifact-craft/scripts/wl-artifact` | el cliente |
 | `skill/artifact-craft/scripts/build-catalog.py` | arma tu galería local |
-| `skill/artifact-craft/templates/` | el artifact de arranque, la galería y la landing |
+| `skill/artifact-craft/templates/` | el artifact de arranque, una página viva lista para copiar, la galería y la landing |
 | `install.sh` | el instalador |
 
 ## Licencia
