@@ -69,6 +69,44 @@ jobs:
           [ "$perm" = "600" ] || { echo "la config no quedo en 600 (quedo $perm)"; exit 1; }
           echo "instalacion OK"
 
+      # Y tiene que cubrir CUALQUIER agente que la persona tenga, no una lista fija: se planta una
+      # maquina de mentira con varios y se mira donde quedo el skill. Tambien que NO deje basura
+      # donde no corresponde, y que acepte una carpeta a mano para un agente fuera de la lista.
+      - name: Cubre todos los agentes de la maquina
+        run: |
+          python3 - <<'PY' &
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          import json
+          class H(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  body = json.dumps({"ok": True, "user": "tester", "is_admin": False,
+                                     "artifacts": 0, "max_artifacts": 200, "bytes_stored": 0,
+                                     "max_bytes_per_artifact": 2097152}).encode()
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+              def log_message(self, *a):
+                  pass
+          HTTPServer(("127.0.0.1", 18100), H).serve_forever()
+          PY
+          sleep 1
+          H=/tmp/agenthome
+          rm -rf "$H"; mkdir -p "$H"
+          mkdir -p "$H/.claude" "$H/.codex" "$H/.gemini" "$H/.cursor" "$H/.config/opencode"
+          mkdir -p "$H/.config/zed/skills" "$H/.config/goose" "$H/.config/alguna-app" "$H/.opencode" "$H/mi-agente-raro"
+          HOME="$H" ARTIFACT_CRAFT_SKILL_DIRS="$H/mi-agente-raro/skills" \
+            bash install.sh --api http://127.0.0.1:18100 \
+              --token "wlart_$(python3 -c "print('a'*48)")" </dev/null
+          for d in .claude .codex .gemini .cursor .config/opencode .config/zed mi-agente-raro; do
+            test -f "$H/$d/skills/artifact-craft/SKILL.md" || { echo "no llego a $d"; exit 1; }
+          done
+          test -f "$H/.hermes/skills/creative/artifact-craft/SKILL.md" || { echo "no llego a Hermes"; exit 1; }
+          test -e "$H/.config/goose/skills" && { echo "dejo basura en goose (no tenia skills/)"; exit 1; }
+          test -e "$H/.config/alguna-app/skills" && { echo "dejo basura en una app sin skills/"; exit 1; }
+          echo "cobertura de agentes OK"
+
       # La guarda tiene que frenar ANTES de instalar, no despues: media instalacion en silencio
       # fue el bug original. Y un token con formato invalido tambien se rechaza sin dejar nada.
       - name: Sin terminal ni datos se frena a tiempo
