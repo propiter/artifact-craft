@@ -34,19 +34,36 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --api)           HUB_API="${2:-}";  [ -n "$HUB_API" ]  || die "--api necesita la URL del hub"; shift 2 ;;
     --code)          HUB_CODE="${2:-}"; [ -n "$HUB_CODE" ] || die "--code necesita el codigo de equipo"; shift 2 ;;
+    --token)         HUB_TOKEN="${2:-}"; [ -n "$HUB_TOKEN" ] || die "--token necesita el token"; shift 2 ;;
     --name|--nombre) HUB_NAME="${2:-}"; [ -n "$HUB_NAME" ] || die "--name necesita tu nombre"; shift 2 ;;
-    -h|--help)       say "uso: install.sh [--api URL] [--code CODIGO] [--name TU-NOMBRE]"; exit 0 ;;
-    *)               die "opcion desconocida: $1   (las que hay: --api, --code, --name)" ;;
+    -h|--help)       say "uso: install.sh [--api URL] [--code CODIGO | --token TOKEN] [--name TU-NOMBRE]"; exit 0 ;;
+    *)               die "opcion desconocida: $1   (las que hay: --api, --code, --token, --name)" ;;
   esac
 done
-export HUB_API="${HUB_API:-}" HUB_CODE="${HUB_CODE:-}" HUB_NAME="${HUB_NAME:-}"
+export HUB_API="${HUB_API:-}" HUB_CODE="${HUB_CODE:-}" HUB_NAME="${HUB_NAME:-}" HUB_TOKEN="${HUB_TOKEN:-}"
+
+# La FORMA de los datos se valida ANTES de bajar e instalar. Un error de tipeo no tiene por que
+# dejar el skill y el cliente copiados y la cuenta a medias: eso es justo lo que se quiso evitar.
+if [ -n "${HUB_API:-}" ]; then
+  case "$HUB_API" in
+    https://*|http://*) ;;
+    *) die "la URL del hub tiene que empezar con https:// o http:// (recibi: ${HUB_API})" ;;
+  esac
+fi
+if [ -n "${HUB_TOKEN:-}" ]; then
+  case "$HUB_TOKEN" in
+    wlart_*) ;;
+    *) die "el token debería empezar con wlart_ — pedilo a quien administra el hub" ;;
+  esac
+fi
 
 # Sin terminal no hay quien conteste las preguntas. Si tampoco hay variables ni configuracion
 # previa, se frena ACA: antes se instalaba el skill y el cliente, y despues moria sin cuenta.
-if [ ! -t 0 ] && [ ! -f "$CFG" ] && [ -z "${HUB_API:-}" ]; then
+if [ ! -t 0 ] && [ ! -f "$CFG" ] && [ -z "${HUB_API:-}" ] && [ -z "${HUB_TOKEN:-}" ] && [ -z "${HUB_CODE:-}" ]; then
   die "correr asi no funciona: no puedo preguntar sin terminal.
   Correlo en UN comando, diciendome las tres cosas:
     bash install.sh --api https://artifacts.lab.whitelabel.lat --code EL-CODIGO --name tu-nombre
+  (o con un token ya emitido: --api <url> --token wlart_...)
   (o solo para actualizar el skill, si ya tenias cuenta: bash install.sh)"
 fi
 
@@ -122,6 +139,16 @@ else
   fi
   [ -n "$hub_api" ] || die "sin URL del hub no puedo configurar el cliente"
 
+  # Token pasado por flag o entorno: es el camino SIN terminal (un agente, un CI, un script).
+  # Sin esto, configurar con un token exigia una terminal y no habia forma de automatizarlo.
+  if [ -n "${HUB_TOKEN:-}" ]; then
+    case "$HUB_TOKEN" in
+      wlart_*) ;;
+      *) die "el token debería empezar con wlart_ — pedilo a quien administra el hub" ;;
+    esac
+    "$BIN/wl-artifact" setup "$HUB_TOKEN" "$hub_api" >/dev/null
+    say "· token guardado en $CFG (chmod 600)"
+  else
   if [ -z "${HUB_CODE:-}" ] && [ -t 0 ]; then
     say ""
     say "  ¿Tenés un CODIGO DE EQUIPO? Es lo más fácil: crea tu cuenta, guarda tu token"
@@ -141,7 +168,7 @@ else
     [ -n "$hub_name" ] || die "sin nombre no puedo crear tu espacio: pasalo en HUB_NAME=<nombre>"
     "$BIN/wl-artifact" join "$hub_code" --name "$hub_name" --api "$hub_api" || die "no pude crear la cuenta"
   else
-    [ -t 0 ] || die "sin terminal necesito HUB_API y HUB_CODE (o configurar con: wl-artifact setup <token> <url>)"
+    [ -t 0 ] || die "sin terminal necesito HUB_API y HUB_CODE (o --token, o configurar con: wl-artifact setup <token> <url>)"
     printf 'tu token (no se muestra al escribir): '
     read -rs hub_token
     printf '\n'
@@ -151,6 +178,7 @@ else
     esac
     "$BIN/wl-artifact" setup "$hub_token" "$hub_api" >/dev/null
     say "· token guardado en $CFG (chmod 600)"
+  fi
   fi
 fi
 
