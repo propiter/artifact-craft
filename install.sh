@@ -152,6 +152,7 @@ fi
 mkdir -p "$BIN"
 cp "$SKILL_DST/scripts/wl-artifact"        "$BIN/wl-artifact"
 cp "$SKILL_DST/scripts/build-catalog.py"   "$BIN/build-catalog.py"
+cp "$SKILL_DST/scripts/make-preview.py"    "$BIN/make-preview.py"
 cp "$SKILL_DST/templates/catalog-template.html" "$BIN/catalog-template.html"
 chmod +x "$BIN/wl-artifact"
 say "· cliente instalado en $BIN/wl-artifact"

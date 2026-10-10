@@ -13,6 +13,13 @@
 #   wl-artifact whoami                          usuario, cupo y uso
 #   wl-artifact catalog                         arma la galeria local
 #   wl-artifact events                          historial de lo tuyo
+#   wl-artifact key <slug> [--rotate|--off|--on]   la clave que lleva la pagina adentro
+#   wl-artifact state <slug>                     lee lo que la pagina guardo
+#   wl-artifact state-set <slug> [archivo|-]     escribe ese estado
+#
+# publicar y deploy generan la VISTA PREVIA (1200x630) con un navegador headless y la suben,
+# para que el link se vea al pegarlo. Sin navegador en la maquina, publican igual: --no-thumb
+# lo saltea a proposito.
 set -euo pipefail
 
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}/wl-artifact/config"
@@ -37,6 +44,7 @@ find_asset() {
 }
 BUILDER="$(find_asset build-catalog.py || true)"
 TEMPLATE="$(find_asset catalog-template.html || true)"
+PREVIEWER="$(find_asset make-preview.py || true)"
 
 die() { printf 'wl-artifact: %s\n' "$*" >&2; exit 1; }
 
@@ -84,6 +92,47 @@ print(s[:60] or "artifact")
 PY
 }
 
+# Un campo del JSON que devolvio la API, sin depender de jq.
+jfield() {
+  python3 -c 'import json,sys
+try:
+    d = json.loads(sys.stdin.read())
+except Exception:
+    d = {}
+v = d.get(sys.argv[1]) if isinstance(d, dict) else None
+print("" if v is None else v)' "$1"
+}
+
+# Tu nombre en el hub: el estado se pide por (usuario, slug), porque el slug solo no alcanza.
+me() { api GET "/api/v1/whoami" | jfield user; }
+
+# Saca la vista previa del archivo. Devuelve 1 sin ruido si no se pudo: publicar manda.
+make_preview() {
+  [ -n "$PREVIEWER" ] || return 1
+  python3 "$PREVIEWER" "$1" "$2" >/dev/null 2>&1 || return 1
+  [ -s "$2" ]
+}
+
+# Sube la vista previa que corresponde a $1 (el archivo) para el slug $2.
+put_preview() {
+  local src="$1" slug="$2" tmp png out url
+  tmp="$(mktemp -d)"; png="$tmp/preview.png"
+  if make_preview "$src" "$png"; then
+    out="$(api PUT "/api/v1/artifacts/${slug}/thumb" -H 'Content-Type: image/png' \
+              --data-binary "@$png" 2>/dev/null || true)"
+    url="$(printf '%s' "$out" | jfield thumb_url)"
+    if [ -n "$url" ]; then
+      printf 'vista previa: %s\n' "$url"
+    else
+      printf 'aviso: el hub no acepto la vista previa (¿version vieja del hub?): se publica igual\n'
+    fi
+  else
+    printf 'sin navegador headless: se publica igual, sin vista previa\n'
+  fi
+  rm -rf "$tmp"
+  return 0
+}
+
 cmd_setup() {
   local t="${1:-}" url="${2:-${ARTIFACTS_API:-}}"
   case "$t" in wlart_*) ;; *) die "el token debe empezar con wlart_" ;; esac
@@ -108,16 +157,24 @@ cmd_setup() {
 
 cmd_publish() {
   need_token
-  local f="${1:-}" slug="${2:-}"
-  [ -n "$f" ] || die "uso: wl-artifact publish <archivo.html> [slug]"
+  local f="" slug="" no_thumb=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-thumb) no_thumb=1; shift ;;
+      -*) die "opcion desconocida: $1" ;;
+      *) if [ -z "$f" ]; then f="$1"; elif [ -z "$slug" ]; then slug="$1"; fi; shift ;;
+    esac
+  done
+  [ -n "$f" ] || die "uso: wl-artifact publish <archivo.html> [slug] [--no-thumb]"
   [ -f "$f" ] || die "no existe el archivo: $f"
   case "$f" in *.html|*.htm) ;; *) die "solo .html (esto publica artifacts, no adjuntos)" ;; esac
   [ -n "$slug" ] || slug="$(slugify "$f")"
+  # La vista previa va PRIMERO: la publicacion la mira para armar el og:image de la pagina.
+  [ "$no_thumb" = 1 ] || put_preview "$f" "$slug"
   # El titulo NO se manda: lo lee el servidor del <title> del propio archivo.
   # Mandarlo por header corrompia los acentos (los headers HTTP son latin-1).
-  local args=(-H 'Content-Type: text/html')
   local out
-  out="$(api PUT "/api/v1/artifacts/${slug}" "${args[@]}" --data-binary "@${f}")"
+  out="$(api PUT "/api/v1/artifacts/${slug}" -H 'Content-Type: text/html' --data-binary "@${f}")"
   python3 - "$out" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
@@ -125,16 +182,27 @@ verb = "sin cambios" if d.get("unchanged") else "publicado"
 print("%s  v%d  %s (%d bytes)" % (verb, d["version"], d["url"], d["bytes"]))
 if d.get("snapshot_url") and not d.get("unchanged"):
     print("  version inmutable: %s" % d["snapshot_url"])
+if not d.get("thumb_url"):
+    print("  (sin vista previa: el link se va a ver pelado al pegarlo)")
 PY
 }
 
 cmd_deploy() {
   need_token
-  local dir="${1:-}" slug="${2:-}"
-  [ -n "$dir" ] || die "uso: wl-artifact deploy <carpeta> [slug]"
+  local dir="" slug="" no_thumb=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-thumb) no_thumb=1; shift ;;
+      -*) die "opcion desconocida: $1" ;;
+      *) if [ -z "$dir" ]; then dir="$1"; elif [ -z "$slug" ]; then slug="$1"; fi; shift ;;
+    esac
+  done
+  [ -n "$dir" ] || die "uso: wl-artifact deploy <carpeta> [slug] [--no-thumb]"
   [ -d "$dir" ] || die "no existe la carpeta: $dir"
   [ -f "$dir/index.html" ] || die "la carpeta necesita un index.html en la raiz"
   [ -n "$slug" ] || slug="$(slugify "$(basename "$dir")")"
+  # La vista previa es la del index: es lo que se ve al pegar el link de la app.
+  [ "$no_thumb" = 1 ] || put_preview "$dir/index.html" "$slug"
   local tmp; tmp="$(mktemp -d)"
   ( cd "$dir" && tar -czf "$tmp/app.tgz" \
       --exclude='./.git' --exclude='./node_modules' --exclude='./.DS_Store' \
@@ -260,6 +328,68 @@ cmd_catalog() {
   printf 'galeria: %s\n' "$CATALOG_OUT"
 }
 
+# ---------- la clave y el estado: lo que hace VIVO a un artifact ----------
+cmd_key() {
+  need_token
+  local slug="${1:-}" mode="${2:-}" out
+  [ -n "$slug" ] || die "uso: wl-artifact key <slug> [--rotate|--off|--on]"
+  case "$mode" in
+    ""|--show) out="$(api GET "/api/v1/artifacts/${slug}/key")" ;;
+    --rotate)  out="$(api POST "/api/v1/artifacts/${slug}/key")" ;;
+    --off)     out="$(api DELETE "/api/v1/artifacts/${slug}/key")" ;;
+    --on)      out="$(api DELETE "/api/v1/artifacts/${slug}/key?on=1")" ;;
+    *) die "opcion desconocida: $mode (hay: --rotate, --off, --on)" ;;
+  esac
+  python3 - "$out" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+if d.get("key"):
+    print("clave del artifact: %s" % d["key"])
+    print("estado:            %s" % d.get("state_url", ""))
+    print("(ya viaja dentro de la pagina publicada: la usa la MISMA pagina.)")
+else:
+    for k in ("slug", "epoch", "revoked", "note"):
+        if d.get(k) is not None:
+            print("%s: %s" % (k, d[k]))
+PY
+}
+
+cmd_state() {
+  need_token
+  local slug="${1:-}" out
+  [ -n "$slug" ] || die "uso: wl-artifact state <slug> [--rm]"
+  if [ "${2:-}" = "--rm" ]; then
+    api DELETE "/api/v1/state/$(me)/${slug}" >/dev/null
+    printf 'estado borrado\n'
+    return 0
+  fi
+  out="$(api GET "/api/v1/state/$(me)/${slug}")"
+  printf '%s' "$out" | python3 -c 'import json,sys
+d = json.loads(sys.stdin.read().strip() or "{}")
+if d == {}:
+    print("(sin estado guardado)")
+else:
+    print(json.dumps(d, indent=2, ensure_ascii=False))'
+}
+
+cmd_state_set() {
+  need_token
+  local slug="${1:-}" src="${2:-}" body out
+  [ -n "$slug" ] || die "uso: wl-artifact state-set <slug> [archivo.json|-]"
+  if [ -z "$src" ] || [ "$src" = "-" ]; then
+    body="$(cat)"
+  else
+    [ -f "$src" ] || die "no existe $src"
+    body="$(cat "$src")"
+  fi
+  [ -n "$body" ] || die "el estado esta vacio"
+  printf '%s' "$body" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' \
+    || die "eso no es JSON valido"
+  out="$(api PUT "/api/v1/state/$(me)/${slug}" -H 'Content-Type: application/json' \
+           --data-binary "$body")"
+  printf '%s' "$out" | python3 -c 'import json,sys; print("estado guardado: %s bytes" % json.loads(sys.stdin.read()).get("bytes"))'
+}
+
 cmd_help() {
   # Imprime el bloque de comentarios de arriba, hasta la primera linea que no lo es.
   # Con un rango fijo (sed -n '2,12p') el help se queda mudo cada vez que se agrega un
@@ -278,6 +408,9 @@ case "${1:-help}" in
   whoami)   cmd_whoami ;;
   events)   shift; cmd_events "$@" ;;
   catalog)  shift; cmd_catalog "$@" ;;
+  key|clave)     shift; cmd_key "$@" ;;
+  state|estado)  shift; cmd_state "$@" ;;
+  state-set|estado-set) shift; cmd_state_set "$@" ;;
   help|-h|--help) cmd_help ;;
   *) die "comando desconocido: ${1}. Probá: wl-artifact help" ;;
 esac

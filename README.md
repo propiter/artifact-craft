@@ -51,12 +51,13 @@ wl-artifact rm <slug>                                            # revoca (mata 
 hermes skills install propiter/artifact-craft/skill/artifact-craft
 ```
 
-Y el cliente, que son tres archivos sueltos:
+Y el cliente, que son cuatro archivos sueltos:
 
 ```bash
 mkdir -p ~/.local/bin
 cp skill/artifact-craft/scripts/wl-artifact            ~/.local/bin/
 cp skill/artifact-craft/scripts/build-catalog.py       ~/.local/bin/
+cp skill/artifact-craft/scripts/make-preview.py        ~/.local/bin/
 cp skill/artifact-craft/templates/catalog-template.html ~/.local/bin/
 ```
 
