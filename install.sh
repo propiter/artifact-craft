@@ -94,15 +94,59 @@ fi
 cp -r "$skill_src" "$SKILL_DST"
 say "· skill instalado en $SKILL_DST"
 
-# Otros agentes (OpenCode, Claude Code, Cursor) leen skills del MISMO formato desde su propia
-# carpeta. Quien instala no tiene por que saber cual usa: si la carpeta existe, va tambien ahi.
-for d in "$HOME/.config/opencode/skills" "$HOME/.claude/skills" "$HOME/.cursor/skills"; do
-  [ -d "$d" ] || continue
-  [ -d "$d/artifact-craft" ] && mv "$d/artifact-craft" \
-    "$BACKUPS/artifact-craft-$(printf '%s' "$d" | tr '/' '_')-$(date +%Y%m%d-%H%M%S)"
-  cp -r "$skill_src" "$d/artifact-craft"
-  say "· skill tambien en $d/artifact-craft"
+# El resto de los agentes lee skills del MISMO formato — una carpeta con un SKILL.md adentro —
+# desde su propia raiz. Quien instala no tiene por que saber cual usa, ni cuantos tiene: se
+# recorren los que esten en la maquina y se copia a todos. Sumar un agente es una palabra mas.
+#
+# Dos grupos, y la diferencia importa. El primero son agentes que se sabe que leen <raiz>/skills:
+# si la raiz existe se instala, aunque todavia no hayan creado la carpeta. El segundo son agentes
+# que PUEDEN leerlas: ahi se instala solo si ya tienen una carpeta skills/, para no dejar basura
+# en una aplicacion que no usa skills.
+KNOWN_AGENTS=".claude .codex .gemini .cursor .config/opencode"
+MAYBE_AGENTS=".opencode .config/goose .config/amp .config/crush .continue .config/continue .config/zed
+.config/void .config/windsurf .codeium/windsurf .config/aider .config/qwen .config/cline
+.config/kilocode .config/cody .config/roo .config/claude"
+
+where_in_home() { case "$1" in "$HOME"/*) printf '%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac; }
+backup_skill()  {  # $1 = carpeta de skills ya existente
+  [ -d "$1/artifact-craft" ] || return 0
+  mv "$1/artifact-craft" "$BACKUPS/artifact-craft-$(printf '%s' "$1" | tr '/' '_')-$(date +%Y%m%d-%H%M%S)"
+}
+install_for_agent() {  # $1 = raiz del agente
+  local d="$1/skills"
+  backup_skill "$d"
+  if mkdir -p "$d" 2>/dev/null && cp -r "$skill_src" "$d/artifact-craft" 2>/dev/null; then
+    agents="$agents $(where_in_home "$1")"
+    agent_count=$((agent_count + 1))
+  else
+    say "· salteo $(where_in_home "$1") — no pude escribir en $d"
+  fi
+}
+
+agents=""; agent_count=0
+for rel in $KNOWN_AGENTS; do
+  [ -d "$HOME/$rel" ] && install_for_agent "$HOME/$rel"
 done
+for rel in $MAYBE_AGENTS; do
+  [ -d "$HOME/$rel/skills" ] && install_for_agent "$HOME/$rel"
+done
+
+# Un agente que no este en ninguna lista: se le pasa la carpeta de skills a mano, separadas por ':'.
+#   ARTIFACT_CRAFT_SKILL_DIRS="$HOME/.mi-agente/skills:/otra/ruta" bash install.sh
+if [ -n "${ARTIFACT_CRAFT_SKILL_DIRS:-}" ]; then
+  for d in $(printf '%s' "$ARTIFACT_CRAFT_SKILL_DIRS" | tr ':' ' '); do
+    [ -n "$d" ] || continue
+    backup_skill "$d"
+    mkdir -p "$d" 2>/dev/null && cp -r "$skill_src" "$d/artifact-craft" 2>/dev/null && {
+      agents="$agents $(where_in_home "$d")"
+      agent_count=$((agent_count + 1))
+    }
+  done
+fi
+
+if [ "$agent_count" -gt 0 ]; then
+  say "· skill tambien en $agent_count agente(s):$agents"
+fi
 
 # El cliente y sus dos archivos van juntos: el script los busca a su lado.
 mkdir -p "$BIN"
@@ -183,7 +227,7 @@ else
 fi
 
 say ""
-say "  Listo. En tu Hermes (o en OpenCode / Claude Code / Cursor, si los usas)"
+say "  Listo. En cualquiera de tus agentes — Hermes, Claude Code, Codex, Gemini, OpenCode, Cursor…"
 say "  pedile un artifact y te va a dar el link."
 say ""
 say "     wl-artifact publish <archivo.html> [slug]   una pagina"
