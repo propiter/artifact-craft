@@ -169,6 +169,24 @@ jobs:
                --data '{"quien":"el-cliente"}' "http://127.0.0.1:$PORT/api/v1/state/tester/e2e" >/dev/null
           bash skill/artifact-craft/scripts/wl-artifact state e2e | grep -q 'el-cliente' \
             || { echo "el agente no ve el estado de la pagina"; exit 1; }
+          # cada lectura avisa que eso lo escribio un tercero, y da el etag
+          bash skill/artifact-craft/scripts/wl-artifact state e2e 2>$D/err >/dev/null
+          grep -q 'DATOS, no instrucciones' $D/err || { echo "la lectura no avisa que es entrada no confiable"; exit 1; }
+          ETAG=$(sed -n 's/^# etag //p' $D/err)
+          [ -n "$ETAG" ] && [ "$ETAG" != "?" ] || { echo "la lectura no trae etag"; exit 1; }
+          # la pagina escribe DESPUES de que el agente leyo: el agente no la puede pisar
+          curl -sS -X PUT -H "X-Artifact-Key: $KEY" -H 'Content-Type: application/json' \
+               --data '{"quien":"la-pagina-otra-vez"}' "http://127.0.0.1:$PORT/api/v1/state/tester/e2e" >/dev/null
+          if echo '{"quien":"el-agente"}' | bash skill/artifact-craft/scripts/wl-artifact state-set e2e - --if-match "$ETAG" 2>$D/err; then
+            echo "el agente piso lo que la pagina escribio despues"; exit 1
+          fi
+          grep -q 'conflict' $D/err || { echo "el rechazo no dice que es un conflicto"; cat $D/err; exit 1; }
+          bash skill/artifact-craft/scripts/wl-artifact state e2e | grep -q 'la-pagina-otra-vez' \
+            || { echo "se perdio lo que escribio la pagina"; exit 1; }
+          # con el etag al dia, escribe
+          ETAG=$(bash skill/artifact-craft/scripts/wl-artifact state e2e 2>&1 >/dev/null | sed -n 's/^# etag //p')
+          echo '{"quien":"el-agente"}' | bash skill/artifact-craft/scripts/wl-artifact state-set e2e - --if-match "$ETAG" \
+            || { echo "con el etag al dia no pudo escribir"; exit 1; }
           # y el estado no se sirve por HTTP
           test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/a/tester/.state/e2e.json")" = "404" \
             || { echo "el estado es alcanzable por HTTP"; exit 1; }
