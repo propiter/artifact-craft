@@ -13,6 +13,9 @@ ve al pegarlo en cualquier chat.
   compartidas, libros de visitas, confirmaciones de asistencia, aprobaciones de una propuesta. El
   agente no escribe la parte delicada (dos personas guardando a la vez, reintentos, límites): la
   trae la página.
+- **IA sin exponer claves.** Una página puede usar un modelo — un chat, un generador de pitch
+  personalizado, un resumen, un clasificador — con una línea (`A.ai(...)`). La clave vive solo en
+  el hub, que además pone topes por visitante y por página.
 - **Diseñado, no generado.** El skill trae una guía de diseño con ocho direcciones completas y el
   método para elegir según el contenido y el gusto del usuario, que el agente recuerda entre
   sesiones.

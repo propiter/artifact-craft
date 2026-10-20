@@ -1,7 +1,7 @@
 ---
 name: artifact-craft
-description: "Use when building or delivering anything visual or interactive — a page, report, dashboard, chart, mockup, landing, game, form, poll, leaderboard, shared list, tracker or small app — or when a result must reach someone as a link. Decides render vs file vs publish, gives pages shared live data that the agent reads back, and makes them look designed, not generated."
-version: 1.2.0
+description: "Use when building or delivering anything visual or interactive — a page, report, dashboard, chart, mockup, landing, game, form, poll, leaderboard, shared list, tracker, small app or AI-powered tool (a chat, a generator, an assistant) — or when a result must reach someone as a link. Decides render vs file vs publish, gives pages shared live data and AI without exposing keys, and makes them look designed, not generated."
+version: 1.3.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -288,6 +288,47 @@ Rules that matter:
   origin), and throws inside the Hermes frame (section 4). Use `A.local` — prefixed, guarded — for
   harmless conveniences only.
 
+#### A page that THINKS — AI, without a key in the page
+
+The same runtime lets a published page use an AI model: a chat like ChatGPT, a sales-pitch
+generator fed with the client's details, a summariser, a classifier, a rewriter, a quiz that writes
+its own questions, an assistant over the page's own shared data. The page never holds an API key:
+it asks the hub, and the hub calls the model with the server's key.
+
+| You need | Call |
+|---|---|
+| an answer | `const text = await A.ai("Summarise this: …")` |
+| instructions + content | `await A.ai({ system: "You are a sales coach…", prompt: details })` |
+| it to write itself on screen | `await A.ai.stream(input, (piece, sofar) => A.md(out, sofar))` |
+| structured output (sections, options, a score) | `const o = await A.ai.json("Return {title, points: [..], close}. Details: …")` |
+| a conversation that remembers | `const c = A.ai.chat({ system: "…" }); await c.send(text, (p, sofar) => A.md(bubble, sofar))` |
+| a different allowed model, or a shorter answer | second argument `{ model, max_tokens, temperature }` |
+| show what the model wrote | `A.md(el, text)` — headings, lists, bold, code, http links, as DOM; never HTML |
+
+Errors carry `e.code`: `ai_rate_limited` (this visitor hit the hourly cap — `e.retryAfter`
+seconds), `ai_page_limit` (the page hit its daily cap), `ai_off` (this hub has no AI configured),
+`bad_model`, `too_large` (trim the input or the history), `ai_upstream` / `ai_timeout` (the
+provider failed — offer a retry). Every one of them is a sentence in the page, never a silent
+failure.
+
+Recipes — chat, personalised pitch, summary of the page's shared data, classifier, rewriter, quiz,
+guided form — complete and copyable: **`references/ai.md`**. A working, designed chat to start
+from: **`templates/ai-chat.html`**.
+
+Rules for AI pages:
+
+- **Model output is untrusted text.** Render it with `A.md` or `textContent`, never `innerHTML`:
+  a visitor can make the model print `<script>`. And never let it decide an action by itself
+  (submitting, deleting, publishing) — it suggests, a person clicks.
+- **Everything in the page is public — the system prompt too.** Anyone can read it and anyone
+  can send any prompt through the page. Put no secrets, internal prices or personal data in it;
+  the protection is the hub's per-visitor and per-page caps, not obscurity.
+- **Spend calls deliberately.** One call per user action, never on page load, on every keystroke
+  or in a loop. Disable the button while waiting, stream anything longer than a sentence, keep
+  chat history short (`keep`), and show the remaining-quota message when it comes.
+- **Live only once published.** A local preview has no runtime: show the interface with a note
+  that the AI answers on the published link.
+
 #### Three footguns worth one line each
 
 - **The slug defaults to the file's basename**, so `publish x/foo.html` and `publish x/foo.html bar`
@@ -427,6 +468,9 @@ you gave out. Re-publishing identical content changes nothing at all.
 - `el.innerHTML = entry.name` with anything from the state → script injection into every visitor.
 - Hand-written `fetch` to the state API → the runtime already does it, with the merge and the
   backoff a hand-written version gets wrong.
+- An API key in a page (`sk-…`, `Authorization: Bearer` to a model provider) → public the moment
+  it is published. AI goes through `A.ai`.
+- `el.innerHTML = await A.ai(…)` → the model's output runs as code. Use `A.md(el, text)`.
 - `./script.js` next to the HTML → does not resolve. Broken page.
 - Hardcoded `#fff`/`#000` on a widget → looks foreign in the app's theme.
 - A "shareable link" that is a local file path → publish it, or it does not exist.
@@ -441,6 +485,9 @@ you gave out. Re-publishing identical content changes nothing at all.
   layout for each kind of artifact, and remembering the user's taste. Read before writing CSS.
 - `references/live-data.md` — recipes for shared live data, one per use case, on the runtime.
 - `templates/live-app.html` — a working, designed live page (a poll with live results) to start
+  from.
+- `references/ai.md` — recipes for AI-powered pages, one per use case, on `A.ai`.
+- `templates/ai-chat.html` — a working, designed AI chat (streaming, markdown, errors) to start
   from.
 - `references/responsive.md` — making a page read well on phone, tablet and desktop (including pages
   generated by a print/PDF engine), and the measuring script that proves it.

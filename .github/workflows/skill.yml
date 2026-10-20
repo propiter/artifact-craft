@@ -164,12 +164,15 @@ jobs:
           grep -q 'og:description" content="Una prueba de verdad"' "$S" || { echo "falta la descripcion del autor"; exit 1; }
           grep -q 'window.ARTIFACT=' "$S" || { echo "falta el runtime"; exit 1; }
           # las funciones que el skill le ensena al agente tienen que llegar en la pagina
-          for f in load save watch get set incr push update remove vote tally rank clean; do
+          for f in load save watch get set incr push update remove vote tally rank clean ai md; do
             grep -q "A.$f = " "$S" || { echo "el runtime de la pagina no trae A.$f"; exit 1; }
           done
           # y la plantilla viva del skill se publica y recibe el runtime como cualquier pagina
           bash skill/artifact-craft/scripts/wl-artifact publish skill/artifact-craft/templates/live-app.html plantilla-viva
           grep -q 'A.vote = async function' $D/a/tester/plantilla-viva.html || { echo "la plantilla publicada no trae el runtime"; exit 1; }
+          grep -q 'A.ai.stream = async function' "$S" || { echo "el runtime de la pagina no trae A.ai.stream"; exit 1; }
+          bash skill/artifact-craft/scripts/wl-artifact publish skill/artifact-craft/templates/ai-chat.html plantilla-ia
+          grep -q 'A.ai.chat = function' $D/a/tester/plantilla-ia.html || { echo "la plantilla de IA publicada no trae el runtime"; exit 1; }
           KEY=$(grep -o '"key":"[^"]*"' "$S" | cut -d'"' -f4)
           [ -n "$KEY" ] || { echo "la pagina no lleva clave"; exit 1; }
           python3 - "$D/a/tester/e2e.preview.png" <<'PY'
