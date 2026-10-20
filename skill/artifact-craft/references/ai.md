@@ -12,7 +12,9 @@ What every recipe does, and yours must too:
 3. **Render output with `A.md(el, text)`** (formatted) or `textContent` (plain). Never `innerHTML`.
 4. **Errors as sentences.** Use `explain(e)` below — the visitor must know whether to wait, retry
    or give up.
-5. **A not-live branch.** Locally there is no runtime: show the interface, disable the trigger,
+5. **Check availability on load** with `A.ai.info()` (free) and disable the AI parts with a sentence
+   when `available` is false.
+6. **A not-live branch.** Locally there is no runtime: show the interface, disable the trigger,
    say the AI answers on the published link.
 
 The shared helpers:

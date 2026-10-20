@@ -302,8 +302,13 @@ it asks the hub, and the hub calls the model with the server's key.
 | it to write itself on screen | `await A.ai.stream(input, (piece, sofar) => A.md(out, sofar))` |
 | structured output (sections, options, a score) | `const o = await A.ai.json("Return {title, points: [..], close}. Details: …")` |
 | a conversation that remembers | `const c = A.ai.chat({ system: "…" }); await c.send(text, (p, sofar) => A.md(bubble, sofar))` |
-| a different allowed model, or a shorter answer | second argument `{ model, max_tokens, temperature }` |
+| a different allowed model, or a shorter answer | second argument `{ model, max_tokens, temperature }` — the default model is the right one almost always |
+| to know if AI is on, and which models | `await A.ai.info()` → `{available, model, models, per_visitor_hour, per_page_day}` (free: no quota) |
 | show what the model wrote | `A.md(el, text)` — headings, lists, bold, code, http links, as DOM; never HTML |
+
+Answers can arrive all at once instead of word by word (the provider may not stream): show a
+"thinking" indicator until the first text arrives, and the page works either way. Each call takes a
+few seconds.
 
 Errors carry `e.code`: `ai_rate_limited` (this visitor hit the hourly cap — `e.retryAfter`
 seconds), `ai_page_limit` (the page hit its daily cap), `ai_off` (this hub has no AI configured),

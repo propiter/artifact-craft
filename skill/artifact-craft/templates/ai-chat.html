@@ -186,6 +186,12 @@ textarea:focus{outline:none}
     thread.replaceChildren(); $("empty").hidden = false; $("reset").hidden = true; input.focus();
   };
   if (!live) $("lede").textContent = "Preview: the assistant answers once this page is published.";
+  else A.ai.info().then(i => {                 // say it up front, not after someone typed
+    if (i.available) return;
+    $("lede").textContent = "The assistant isn't available right now.";
+    input.disabled = send.disabled = true;
+    $("chips").hidden = true;
+  }).catch(() => {});
 })();
 </script>
 </body>
