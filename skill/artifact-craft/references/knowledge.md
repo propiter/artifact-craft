@@ -143,7 +143,10 @@ build a public page over internal documents — a page cannot see them, by desig
 
 ## 4. Checks before you hand it over
 
-- `(await A.ai.info()).project` is your project, and `public_docs` > 0.
+- `wl-artifact project <p> | grep PUBLICO` lists exactly the documents you chose — no more.
+  Anyone on the team can flip visibility from the app, and a page answers from whatever is public
+  at the moment it is asked; check at the end, not only when you uploaded.
+- `(await A.ai.info()).project` is your project, and `public_docs` is the number you expect.
 - A question answered by a public document returns it in `sources`.
 - A question only an internal document answers comes back as "not in the documentation".
 - The page works with the AI parts disabled (`ai_off`, quota) — the designed content still reads.
