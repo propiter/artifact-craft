@@ -17,6 +17,21 @@
 #   wl-artifact state <slug>                     lee lo que la pagina guardo (y su etag)
 #   wl-artifact state-set <slug> [archivo|-] [--if-match ETAG]   escribe ese estado
 #
+# PROYECTOS: agrupan artifacts y documentos, de todo el equipo. La IA de una pagina del proyecto
+# responde con sus documentos PUBLICOS; el equipo y los agentes consultan todos.
+#   wl-artifact projects                           lista los proyectos
+#   wl-artifact project new <slug> "<titulo>" ["<descripcion>"]
+#   wl-artifact project <slug>                     sus artifacts y documentos
+#   wl-artifact docs add <slug> <archivo|carpeta>... [--public] [--as <ruta>]
+#                                                  sube e indexa (md txt html csv json pdf docx...);
+#                                                  INTERNO por defecto; rechaza lo que tenga credenciales
+#   wl-artifact docs public|internal <slug> <ruta|carpeta/>...   cambia quien lo puede consultar
+#   wl-artifact docs rm <slug> <ruta|carpeta/>...  saca documentos
+#   wl-artifact ask <slug> "<pregunta>"            responde con los documentos (todos) y cita
+#   wl-artifact search <slug> "<texto>" [--public] los pasajes crudos
+#   wl-artifact move <artifact> <proyecto|->       mete (o saca) un artifact de un proyecto
+#   publish/deploy ... --project <slug>            publica directo dentro del proyecto
+#
 # publicar y deploy generan la VISTA PREVIA (1200x630) con un navegador headless y la suben,
 # para que el link se vea al pegarlo. Sin navegador en la maquina, publican igual: --no-thumb
 # lo saltea a proposito.
@@ -166,15 +181,16 @@ cmd_setup() {
 
 cmd_publish() {
   need_token
-  local f="" slug="" no_thumb=0
+  local f="" slug="" no_thumb=0 project=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-thumb) no_thumb=1; shift ;;
+      --project) project="${2:-}"; [ -n "$project" ] || die "--project necesita el slug del proyecto"; shift 2 ;;
       -*) die "opcion desconocida: $1" ;;
       *) if [ -z "$f" ]; then f="$1"; elif [ -z "$slug" ]; then slug="$1"; fi; shift ;;
     esac
   done
-  [ -n "$f" ] || die "uso: wl-artifact publish <archivo.html> [slug] [--no-thumb]"
+  [ -n "$f" ] || die "uso: wl-artifact publish <archivo.html> [slug] [--no-thumb] [--project <slug>]"
   [ -f "$f" ] || die "no existe el archivo: $f"
   case "$f" in *.html|*.htm) ;; *) die "solo .html (esto publica artifacts, no adjuntos)" ;; esac
   [ -n "$slug" ] || slug="$(slugify "$f")"
@@ -183,12 +199,14 @@ cmd_publish() {
   # El titulo NO se manda: lo lee el servidor del <title> del propio archivo.
   # Mandarlo por header corrompia los acentos (los headers HTTP son latin-1).
   local out
-  out="$(api PUT "/api/v1/artifacts/${slug}" -H 'Content-Type: text/html' --data-binary "@${f}")"
+  out="$(api PUT "/api/v1/artifacts/${slug}${project:+?project=$project}" -H 'Content-Type: text/html' --data-binary "@${f}")"
   python3 - "$out" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
 verb = "sin cambios" if d.get("unchanged") else "publicado"
 print("%s  v%d  %s (%d bytes)" % (verb, d["version"], d["url"], d["bytes"]))
+if d.get("project"):
+    print("  en el proyecto: %s" % d["project"])
 if d.get("snapshot_url") and not d.get("unchanged"):
     print("  version inmutable: %s" % d["snapshot_url"])
 if not d.get("thumb_url"):
@@ -198,15 +216,16 @@ PY
 
 cmd_deploy() {
   need_token
-  local dir="" slug="" no_thumb=0
+  local dir="" slug="" no_thumb=0 project=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-thumb) no_thumb=1; shift ;;
+      --project) project="${2:-}"; [ -n "$project" ] || die "--project necesita el slug del proyecto"; shift 2 ;;
       -*) die "opcion desconocida: $1" ;;
       *) if [ -z "$dir" ]; then dir="$1"; elif [ -z "$slug" ]; then slug="$1"; fi; shift ;;
     esac
   done
-  [ -n "$dir" ] || die "uso: wl-artifact deploy <carpeta> [slug] [--no-thumb]"
+  [ -n "$dir" ] || die "uso: wl-artifact deploy <carpeta> [slug] [--no-thumb] [--project <slug>]"
   [ -d "$dir" ] || die "no existe la carpeta: $dir"
   [ -f "$dir/index.html" ] || die "la carpeta necesita un index.html en la raiz"
   [ -n "$slug" ] || slug="$(slugify "$(basename "$dir")")"
@@ -218,13 +237,15 @@ cmd_deploy() {
       --exclude='./.versions' --exclude='*.tgz' . ) || die "no pude empaquetar la carpeta"
   printf 'empaquetado: %s (%s)\n' "$dir" "$(du -h "$tmp/app.tgz" | cut -f1)"
   local out
-  out="$(api PUT "/api/v1/apps/${slug}" -H 'Content-Type: application/gzip' --data-binary "@$tmp/app.tgz")"
+  out="$(api PUT "/api/v1/apps/${slug}${project:+?project=$project}" -H 'Content-Type: application/gzip' --data-binary "@$tmp/app.tgz")"
   rm -rf "$tmp"
   python3 - "$out" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
 verb = "sin cambios" if d.get("unchanged") else "desplegado"
 print("%s  v%d  %d archivo(s), %.1f KB  %s" % (verb, d["version"], d["files"], d["bytes"]/1024, d["url"]))
+if d.get("project"):
+    print("  en el proyecto: %s" % d["project"])
 PY
 }
 
@@ -423,6 +444,236 @@ d = json.loads(sys.stdin.read())
 print("estado guardado: %s bytes  etag %s" % (d.get("bytes"), d.get("etag", "?")))'
 }
 
+# ---------------------------------------------------------------- proyectos
+# Todo lo de proyectos habla JSON con el hub desde Python: subir carpetas archivo por archivo,
+# juntar errores sin cortar y armar cuerpos JSON con acentos es mas seguro ahi que en bash.
+kb_py() {
+  need_token
+  ARTIFACTS_API="$API" ARTIFACTS_TOKEN="$TOKEN" python3 - "$@" <<'PY'
+import json, os, sys, urllib.error, urllib.parse, urllib.request
+API, TOKEN = os.environ["ARTIFACTS_API"].rstrip("/"), os.environ["ARTIFACTS_TOKEN"]
+SUPPORTED = {".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".yaml", ".yml", ".rst", ".log",
+             ".html", ".htm", ".docx", ".pdf"}
+SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".obsidian", ".trash"}
+
+def die(msg):
+    print("error: " + msg, file=sys.stderr); sys.exit(1)
+
+def call(method, path, body=None, raw=None, ctype="application/json"):
+    data = raw if raw is not None else (None if body is None else json.dumps(body).encode())
+    req = urllib.request.Request(API + path, data=data, method=method,
+                                 headers={"Authorization": "Bearer " + TOKEN, "Content-Type": ctype})
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read())
+        except ValueError:
+            return e.code, {"error": "http_%d" % e.code, "message": ""}
+    except (urllib.error.URLError, OSError) as e:
+        die("no pude hablar con %s (%s)" % (API, e))
+
+def ok(status, d):
+    if status >= 300:
+        die("%s: %s" % (d.get("error", "?"), d.get("message", "")))
+    return d
+
+def q(s):
+    return urllib.parse.quote(s, safe="")
+
+def ago(ts):
+    import time
+    m = int((time.time() - ts) / 60)
+    return "%d min" % m if m < 60 else ("%d h" % (m // 60) if m < 1440 else "%d d" % (m // 1440))
+
+cmd, args = sys.argv[1], sys.argv[2:]
+
+if cmd == "projects":
+    ps = ok(*call("GET", "/api/v1/projects"))["projects"]
+    if not ps:
+        print("no hay proyectos todavia. Crea uno: wl-artifact project new <slug> \"<titulo>\"")
+    for p in ps:
+        print("%-24s %s" % (p["slug"], p["title"]))
+        if p["description"]:
+            print("%-24s %s" % ("", p["description"]))
+        print("%-24s %d artifacts · %d documentos (%d publicos) · hace %s" % (
+            "", p["artifacts"], p["docs"], p["public_docs"], ago(p["updated_at"])))
+
+elif cmd == "project-new":
+    if len(args) < 1:
+        die('uso: wl-artifact project new <slug> "<titulo>" ["<descripcion>"]')
+    d = ok(*call("POST", "/api/v1/projects", {"slug": args[0], "title": args[1] if len(args) > 1 else args[0],
+                                               "description": args[2] if len(args) > 2 else ""}))
+    print("proyecto creado: %s — %s" % (d["slug"], d["title"]))
+
+elif cmd == "project-show":
+    d = ok(*call("GET", "/api/v1/projects/" + q(args[0])))
+    print("%s — %s" % (d["slug"], d["title"]))
+    if d["description"]:
+        print(d["description"])
+    print("\nartifacts (%d):" % len(d["artifact_list"]))
+    for a in d["artifact_list"]:
+        print("  %s" % a["url"])
+    print("\ndocumentos (%d, %d publicos):" % (d["docs"], d["public_docs"]))
+    for x in d["documents"]:
+        print("  %-8s %-48s %4d pasajes%s" % ("PUBLICO" if x["visibility"] == "public" else "interno",
+                                             x["path"], x["chunks"], "" if x["semantic"] else "  (solo por palabras)"))
+
+elif cmd == "docs-add":
+    vis, alias, items = None, None, []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--public":
+            vis = "public"
+        elif a == "--internal":
+            vis = "internal"
+        elif a == "--as":
+            alias = args[i + 1] if i + 1 < len(args) else die("--as necesita una ruta")
+            i += 1
+        else:
+            items.append(a)
+        i += 1
+    if len(items) < 2:
+        die("uso: wl-artifact docs add <proyecto> <archivo|carpeta>... [--public] [--as <ruta>]")
+    project, sources = items[0], items[1:]
+    files = []          # (ruta local, ruta dentro del proyecto)
+    skipped = []
+    for src in sources:
+        src = os.path.normpath(src)
+        if os.path.isdir(src):
+            base = alias.strip("/") if alias else os.path.basename(os.path.abspath(src))
+            for root, dirs, names in os.walk(src):
+                dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
+                for n in sorted(names):
+                    full = os.path.join(root, n)
+                    if n.startswith("."):
+                        continue
+                    if os.path.splitext(n.lower())[1] not in SUPPORTED:
+                        skipped.append(full); continue
+                    files.append((full, base + "/" + os.path.relpath(full, src).replace(os.sep, "/")))
+        elif os.path.isfile(src):
+            if os.path.splitext(src.lower())[1] not in SUPPORTED:
+                skipped.append(src); continue
+            files.append((src, alias if (alias and len(sources) == 1) else os.path.basename(src)))
+        else:
+            die("no existe: " + src)
+    if not files:
+        die("no hay archivos que se indexen (se aceptan: %s)" % " ".join(sorted(SUPPORTED)))
+    count = {"created": 0, "updated": 0, "unchanged": 0, "visibility": 0}
+    rejected, failed, lexical = [], [], 0
+    for n, (local, path) in enumerate(files, 1):
+        with open(local, "rb") as f:
+            data = f.read()
+        qs = "?path=" + q(path) + ("&visibility=" + vis if vis else "")
+        status, d = call("PUT", "/api/v1/projects/%s/docs%s" % (q(project), qs), raw=data,
+                         ctype="application/octet-stream")
+        if status == 404 and d.get("error") == "no_project":
+            die(d["message"])
+        if status < 300:
+            count[d["status"]] += 1
+            if d["status"] in ("created", "updated") and not d.get("semantic"):
+                lexical += 1
+            mark = {"created": "+", "updated": "~", "unchanged": "=", "visibility": "v"}[d["status"]]
+            print("%s %-8s %s" % (mark, "PUBLICO" if d["visibility"] == "public" else "interno", path))
+        elif d.get("error") == "secrets":
+            rejected.append((local, d.get("findings", [])))
+            print("! RECHAZADO %s — tiene credenciales" % path)
+        else:
+            failed.append((local, "%s: %s" % (d.get("error"), d.get("message"))))
+            print("! fallo     %s — %s" % (path, d.get("message", "")))
+    print("\n%d nuevos, %d actualizados, %d sin cambios%s" % (
+        count["created"], count["updated"], count["unchanged"],
+        ", %d cambiaron de visibilidad" % count["visibility"] if count["visibility"] else ""))
+    if skipped:
+        print("%d archivos salteados por tipo (imagenes, binarios...)" % len(skipped))
+    if lexical:
+        print("aviso: %d se indexaron solo por palabras (el hub no tiene embeddings configurados)" % lexical)
+    if rejected:
+        print("\nRECHAZADOS por tener algo con forma de credencial (no se subio NADA de ellos):")
+        for local, finds in rejected:
+            print("  %s: %s" % (local, ", ".join("linea %d (%s)" % (f["line"], f["kind"]) for f in finds)))
+        print("Sacales la credencial (y rotala si es real) o deja ese archivo afuera.")
+    if failed:
+        print("\nFALLARON:")
+        for local, msg in failed:
+            print("  %s: %s" % (local, msg))
+    if rejected or failed:
+        sys.exit(1)
+
+elif cmd in ("docs-public", "docs-internal", "docs-rm"):
+    if len(args) < 2:
+        die("uso: wl-artifact docs %s <proyecto> <ruta|carpeta/>..." % cmd[5:])
+    project, targets = args[0], args[1:]
+    total = []
+    for t in targets:
+        body = {"prefix": t} if t.endswith("/") else {"paths": [t]}
+        if cmd == "docs-rm":
+            total += ok(*call("DELETE", "/api/v1/projects/%s/docs" % q(project), body))["removed"]
+        else:
+            body["visibility"] = "public" if cmd == "docs-public" else "internal"
+            total += ok(*call("PATCH", "/api/v1/projects/%s/docs" % q(project), body))["changed"]
+    verb = {"docs-rm": "sacados", "docs-public": "ahora PUBLICOS", "docs-internal": "ahora internos"}[cmd]
+    print("%d documentos %s" % (len(total), verb))
+    for p in total:
+        print("  " + p)
+    if not total:
+        sys.exit(1)
+
+elif cmd == "ask":
+    if len(args) < 2:
+        die('uso: wl-artifact ask <proyecto> "<pregunta>"')
+    d = ok(*call("POST", "/api/v1/projects/%s/ask" % q(args[0]), {"q": " ".join(args[1:])}))
+    print(d["text"].strip())
+    if d.get("sources"):
+        print("\nfuentes:")
+        for s in d["sources"]:
+            print("  [%d] %s%s" % (s["n"], s["path"], (" › " + s["heading"]) if s["heading"] else ""))
+
+elif cmd == "search":
+    pub = "--public" in args
+    rest = [a for a in args if a != "--public"]
+    if len(rest) < 2:
+        die('uso: wl-artifact search <proyecto> "<texto>" [--public]')
+    d = ok(*call("POST", "/api/v1/projects/%s/search" % q(rest[0]), {"q": " ".join(rest[1:]), "public_only": pub}))
+    if not d["passages"]:
+        print("nada encontrado")
+    for p in d["passages"]:
+        print("── %s%s  [%s]" % (p["path"], (" › " + p["heading"]) if p["heading"] else "", p["visibility"]))
+        print(p["text"].strip()[:700] + "\n")
+
+elif cmd == "move":
+    if len(args) != 2:
+        die("uso: wl-artifact move <artifact> <proyecto|->")
+    target = None if args[1] == "-" else args[1]
+    ok(*call("PUT", "/api/v1/artifacts/%s/project" % q(args[0]), {"project": target}))
+    print("%s %s" % (args[0], ("-> proyecto " + target) if target else "ya no esta en un proyecto"))
+PY
+}
+
+cmd_projects_list() { kb_py projects; }
+
+cmd_project() {
+  case "${1:-}" in
+    new|nuevo) shift; kb_py project-new "$@" ;;
+    "") die 'uso: wl-artifact project <slug>  |  wl-artifact project new <slug> "<titulo>"' ;;
+    *) kb_py project-show "$1" ;;
+  esac
+}
+
+cmd_docs() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    add|subir) kb_py docs-add "$@" ;;
+    public|publico) kb_py docs-public "$@" ;;
+    internal|interno) kb_py docs-internal "$@" ;;
+    rm|sacar) kb_py docs-rm "$@" ;;
+    ls|"") [ -n "${1:-}" ] || die "uso: wl-artifact docs ls <proyecto>"; kb_py project-show "$1" ;;
+    *) die "docs: add | public | internal | rm | ls" ;;
+  esac
+}
+
 cmd_help() {
   # Imprime el bloque de comentarios de arriba, hasta la primera linea que no lo es.
   # Con un rango fijo (sed -n '2,12p') el help se queda mudo cada vez que se agrega un
@@ -444,6 +695,12 @@ case "${1:-help}" in
   key|clave)     shift; cmd_key "$@" ;;
   state|estado)  shift; cmd_state "$@" ;;
   state-set|estado-set) shift; cmd_state_set "$@" ;;
+  projects|proyectos) cmd_projects_list ;;
+  project|proyecto) shift; cmd_project "$@" ;;
+  docs|documentos) shift; cmd_docs "$@" ;;
+  ask|preguntar) shift; kb_py ask "$@" ;;
+  search|buscar) shift; kb_py search "$@" ;;
+  move|mover) shift; kb_py move "$@" ;;
   help|-h|--help) cmd_help ;;
   *) die "comando desconocido: ${1}. Probá: wl-artifact help" ;;
 esac

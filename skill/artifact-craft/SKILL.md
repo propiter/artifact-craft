@@ -1,7 +1,7 @@
 ---
 name: artifact-craft
-description: "Use when building or delivering anything visual or interactive — a page, report, dashboard, chart, mockup, landing, game, form, poll, leaderboard, shared list, tracker, small app or AI-powered tool (a chat, a generator, an assistant) — or when a result must reach someone as a link. Decides render vs file vs publish, gives pages shared live data and AI without exposing keys, and makes them look designed, not generated."
-version: 1.3.0
+description: "Use when building or delivering anything visual or interactive — a page, report, dashboard, chart, mockup, landing, game, form, poll, leaderboard, shared list, tracker, small app, AI-powered tool (a chat, a generator, an assistant) or a page that answers from a set of documents (a product, a client, a topic) — or when a result must reach someone as a link. Decides render vs file vs publish, gives pages shared live data, AI and project knowledge without exposing keys, and makes them look designed, not generated."
+version: 1.4.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -49,6 +49,32 @@ Answer INLINE in the chat, and render nothing, when the content is:
 
 Turning those into artifacts fills the gallery with cards nobody asked for — and then the artifact
 that mattered competes with noise. One artifact per topic, not one per reply.
+
+### Decide what the page NEEDS — the user will not name it
+
+People ask for outcomes ("a pitch for this client", "something to show the product at the
+meeting", "a page where the team signs up"), never for "live state" or "RAG". Reading the outcome
+and choosing the capabilities is YOUR job, and so is NOT adding the ones that do not earn their
+place:
+
+| The outcome needs… | Use | Not when |
+|---|---|---|
+| to look right and be read | a designed static page — the default | — |
+| to remember what visitors do (votes, lists, scores, sign-ups) | live data, `A.save` (section 3) | nobody but the author writes |
+| to write, rewrite, adapt or converse | AI, `A.ai*` | the content is fixed and you can write it now, better, yourself |
+| to answer from material the user has (docs, notes, a KB, a product) | a **project** + `A.ask` | the material fits on the page — then just write the page from it |
+
+**AI only where it earns a place, or when it is asked for.** It earns it when the output depends on
+input you cannot know at build time — the client's name and sector, a visitor's question, their
+own text. It does not earn it to say what you could have written: a pitch for ONE known client is
+better written by you, now, from the documents, than generated live; a pitch TEMPLATE the team
+reuses for every client is where `A.ai.json` belongs. Same for knowledge: a page about a product is
+built FROM the docs; a box where a prospect asks anything about it is `A.ask`. Usually the right
+page is designed content with one AI feature where the reader's input matters — not AI everywhere.
+
+When a request is about a topic that already has a project (`wl-artifact projects`), the page goes
+INTO it and the project's documents are your source: ask it (`wl-artifact ask <p> "…"`) before
+writing, instead of guessing or rereading a thousand local files.
 
 **The failure this skill exists to kill:** creating `.md` / `.txt` / link "artifacts" as a transport
 mechanism. A `.md` is a file, not an artifact. If the answer is text, the answer is text.
@@ -334,6 +360,50 @@ Rules for AI pages:
 - **Live only once published.** A local preview has no runtime: show the interface with a note
   that the AI answers on the published link.
 
+#### A page that KNOWS — projects and their documents
+
+A **project** groups the pages and the documents of one topic (a product, a client, a campaign),
+and it belongs to the whole team. Every page published into a project can answer from its
+documents; nobody wires anything by hand. Use it when the user hands you material ("here are the
+docs", "use this folder", "it should know about X") or when the topic already has one.
+
+```bash
+wl-artifact projects                                     # is there one already? reuse it
+wl-artifact project new acme "Acme" "Product, pitch and sales material"
+wl-artifact docs add acme ./product --public           # what a visitor may learn
+wl-artifact docs add acme ./meetings                   # internal: the team and agents only
+wl-artifact ask acme "Which modules are live today?"   # read the project BEFORE writing
+wl-artifact publish pitch.html acme-pitch --project acme
+```
+
+Every document is **internal** (the team in the app and agents with a token) or **public** (also
+the AI of the project's pages — so ANYONE with a link). Internal is the default; making something
+public is your decision, document by document, and you say which ones you made public in your
+reply. Public: what the product is and does, its modules, the brand, how it works, published
+cases and prices that are on the website. Internal: meetings, decisions, deals, prices quoted to a
+client, people, metrics, anything you would not put on the landing page. When unsure, internal.
+`docs public|internal <p> <path|folder/>` changes it later, from the agent or with a click in the
+app. Documents with credentials are refused, with the file and line, never the value: tell the
+user — a password in their notes is a finding, not an obstacle. Re-adding a folder only uploads
+what changed.
+
+On the page:
+
+| You need | Call |
+|---|---|
+| an answer from the documents, with where it came from | `const r = await A.ask(question)` → `{text, sources: [{title, path, heading, excerpt}]}` |
+| …written on screen as it arrives | `await A.ask(q, { onText: (p, sofar) => A.md(out, sofar) })` |
+| your own instructions (tone, length, format) | `A.ask(q, { system: "Answer as a sales engineer, in 3 bullets" })` |
+| a generator grounded in the documents | `A.ai.json({ system, prompt, knowledge: true })` — the hub adds the relevant passages |
+| a chat that knows the product | `A.ai.chat({ system, knowledge: true })` — `c.sources` after each answer |
+| raw passages, no AI, no quota (a search box, an FAQ) | `await A.docs.search("pricing")` → `[{title, heading, path, text}]` |
+| to know the page is in a project | `(await A.ai.info()).project` → `{slug, title, public_docs}` or `null` |
+
+Show the sources: a short "from: Product overview › Modules" under an answer is what makes it
+trustworthy. If the documents do not contain the answer, the model says so — keep that sentence,
+do not paper over it. Recipes (product assistant, grounded pitch, objection helper, FAQ search,
+docs browser) and how to choose the documents: **`references/knowledge.md`**.
+
 #### Three footguns worth one line each
 
 - **The slug defaults to the file's basename**, so `publish x/foo.html` and `publish x/foo.html bar`
@@ -473,6 +543,11 @@ you gave out. Re-publishing identical content changes nothing at all.
 - `el.innerHTML = entry.name` with anything from the state → script injection into every visitor.
 - Hand-written `fetch` to the state API → the runtime already does it, with the merge and the
   backoff a hand-written version gets wrong.
+- Pasting a knowledge base into the page or the `system` prompt → it is all public, and it
+  overflows the model. Put the documents in the project; the page asks with `A.ask`.
+- Making a whole folder public "so the AI knows more" → a prospect can ask it the price you gave
+  another client. Public is chosen per document.
+- AI on a page whose content you could write now → slower, worse and spends quota. Write it.
 - An API key in a page (`sk-…`, `Authorization: Bearer` to a model provider) → public the moment
   it is published. AI goes through `A.ai`.
 - `el.innerHTML = await A.ai(…)` → the model's output runs as code. Use `A.md(el, text)`.
@@ -494,6 +569,8 @@ you gave out. Re-publishing identical content changes nothing at all.
 - `references/ai.md` — recipes for AI-powered pages, one per use case, on `A.ai`.
 - `templates/ai-chat.html` — a working, designed AI chat (streaming, markdown, errors) to start
   from.
+- `references/knowledge.md` — projects and their documents: choosing what is public, uploading,
+  and recipes for pages that answer from them (`A.ask`, `A.docs`).
 - `references/responsive.md` — making a page read well on phone, tablet and desktop (including pages
   generated by a print/PDF engine), and the measuring script that proves it.
 - `references/claude-artifact-contract.md` — Claude's own Artifact tool prompt, extracted from the

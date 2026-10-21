@@ -219,6 +219,48 @@ jobs:
           bash skill/artifact-craft/scripts/wl-artifact publish $D/pagina.html e2e --no-thumb > $D/pub.txt
           grep -q 'sin cambios' $D/pub.txt \
             || { echo "republicar lo mismo versiono de nuevo"; exit 1; }
+          # PROYECTOS: el agente sube una carpeta, el hub rechaza lo que tiene credenciales, busca,
+          # y una pagina publicada en el proyecto ve SOLO lo publico.
+          W="bash skill/artifact-craft/scripts/wl-artifact"
+          $W project new demo "Demo" "prueba del CI" > $D/p.txt
+          grep -q 'proyecto creado: demo' $D/p.txt || { echo "no creo el proyecto"; cat $D/p.txt; exit 1; }
+          mkdir -p $D/kb/publico $D/kb/interno $D/kb/.oculta
+          printf '# Horario\n\nLa tienda abre de lunes a viernes de 9 a 18.\n' > $D/kb/publico/horario.md
+          printf '# Margen\n\nEl margen interno de la tienda es 73 por ciento.\n' > $D/kb/interno/margen.md
+          printf 'config\n\nDATABASE_URL=postgres://admin:Sup3rClave99@db:5432/x\n' > $D/kb/interno/env.md
+          printf 'nada' > $D/kb/.oculta/x.md; printf 'PNG' > $D/kb/logo.png
+          if $W docs add demo $D/kb > $D/add.txt 2>&1; then
+            echo "subir una carpeta con credenciales deberia terminar con error"; cat $D/add.txt; exit 1
+          fi
+          grep -q 'kb/interno/env.md: linea 3 (cadena de conexion con contrasena)' $D/add.txt \
+            || { echo "no dijo que archivo y que linea tienen la credencial"; cat $D/add.txt; exit 1; }
+          if grep -q 'Sup3rClave99' $D/add.txt; then echo "mostro la credencial"; exit 1; fi
+          grep -q '2 nuevos' $D/add.txt || { echo "no subio los otros dos"; cat $D/add.txt; exit 1; }
+          grep -q 'salteados' $D/add.txt || { echo "no aviso del png salteado"; exit 1; }
+          if grep -q 'oculta' $D/add.txt; then echo "subio una carpeta oculta"; exit 1; fi
+          $W docs add demo $D/kb/publico/horario.md --as kb/publico/horario.md > $D/add2.txt
+          grep -q '^= ' $D/add2.txt || { echo "resubir lo mismo no fue un no-op"; cat $D/add2.txt; exit 1; }
+          $W docs public demo kb/publico/ > $D/pub.txt
+          grep -q '1 documentos ahora PUBLICOS' $D/pub.txt || { echo "no paso a publico"; cat $D/pub.txt; exit 1; }
+          $W search demo "margen de la tienda" > $D/s.txt
+          grep -q 'kb/interno/margen.md' $D/s.txt || { echo "el agente no encuentra lo interno"; cat $D/s.txt; exit 1; }
+          $W search demo "margen de la tienda" --public > $D/s.txt
+          if grep -q '73' $D/s.txt; then echo "--public devolvio un documento interno"; exit 1; fi
+          $W publish $D/pagina.html en-proyecto --no-thumb --project demo > $D/pp.txt
+          grep -q 'en el proyecto: demo' $D/pp.txt || { echo "no publico en el proyecto"; cat $D/pp.txt; exit 1; }
+          PK=$(grep -o '"key":"[^"]*"' $D/a/tester/en-proyecto.html | cut -d'"' -f4)
+          curl -sS -X POST -H "X-Artifact-Key: $PK" -H 'Content-Type: application/json' \
+               --data '{"q":"margen tienda horario"}' "http://127.0.0.1:$PORT/api/v1/kb/tester/en-proyecto" > $D/k.json
+          grep -q 'horario.md' $D/k.json || { echo "la pagina no ve lo publico"; cat $D/k.json; exit 1; }
+          if grep -q '73' $D/k.json; then echo "la PAGINA vio un documento interno"; exit 1; fi
+          $W project demo > $D/pd.txt
+          grep -q 'en-proyecto' $D/pd.txt && grep -q 'PUBLICO  kb/publico/horario.md' $D/pd.txt \
+            || { echo "el detalle del proyecto no muestra la pagina o la visibilidad"; cat $D/pd.txt; exit 1; }
+          # este hub no tiene IA: preguntar tiene que decirlo, no fallar en silencio
+          if $W ask demo "horario" > $D/ask.txt 2>&1; then echo "ask sin IA no deberia salir bien"; exit 1; fi
+          grep -q 'ai_off' $D/ask.txt || { echo "ask sin IA no dice por que"; cat $D/ask.txt; exit 1; }
+          $W docs rm demo kb/interno/ > $D/rm.txt
+          grep -q '1 documentos sacados' $D/rm.txt || { echo "no saco la carpeta"; cat $D/rm.txt; exit 1; }
           echo "punta a punta OK"
 
       # Y contra un hub VIEJO (el commit anterior de verdad, no un doble) publicar tiene que
